@@ -64,6 +64,7 @@ import WorkspaceContextProvider from "@foxglove/studio-base/providers/WorkspaceC
 import { parseAppURLState } from "@foxglove/studio-base/util/appURLState";
 
 import { useWorkspaceActions } from "./context/Workspace/useWorkspaceActions";
+import {LayoutData, useCurrentLayoutActions} from "@foxglove/studio-base/context/CurrentLayoutContext";
 
 const log = Logger.getLogger(__filename);
 
@@ -355,21 +356,51 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
     [getMessagePipeline],
   );
 
+  const { setCurrentLayout } = useCurrentLayoutActions();
+
   const targetUrlState = useMemo(() => {
     const deepLinks = props.deepLinks ?? [];
     return deepLinks[0] ? parseAppURLState(new URL(deepLinks[0])) : undefined;
   }, [props.deepLinks]);
 
   const [unappliedSourceArgs, setUnappliedSourceArgs] = useState(
-    targetUrlState ? { ds: targetUrlState.ds, dsParams: targetUrlState.dsParams } : undefined,
+    targetUrlState ? { ds: targetUrlState.ds, dsParams: targetUrlState.dsParams, layoutUrl: targetUrlState.layoutUrl } : undefined,
   );
 
   const selectEvent = useEvents(selectSelectEvent);
+
+  const fetchLayoutFromUrl = async (layoutUrl: string) => {
+    if (!layoutUrl) {
+      return;
+    }
+    let res;
+    try {
+      res = await fetch(layoutUrl);
+    } catch {
+      log.debug(`Could not load the layout from ${layoutUrl}`);
+      return;
+    }
+    const parsedState: unknown = JSON.parse(await res.text());
+
+    if (typeof parsedState !== "object" || !parsedState) {
+      log.debug(`${layoutUrl} does not contain valid layout JSON`);
+      return;
+    }
+
+    const layoutData = parsedState as LayoutData
+    setCurrentLayout({
+      name: "test-layout",
+      data: layoutData,
+    });
+  }
+
   // Load data source from URL.
   useEffect(() => {
     if (!unappliedSourceArgs) {
       return;
     }
+
+    let shouldUpdate
 
     // Apply any available data source args
     if (unappliedSourceArgs.ds) {
@@ -379,7 +410,15 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
         params: unappliedSourceArgs.dsParams,
       });
       selectEvent(unappliedSourceArgs.dsParams?.eventId);
-      setUnappliedSourceArgs({ ds: undefined, dsParams: undefined });
+      shouldUpdate = true
+    }
+    // Apply any available datasource args
+    if (unappliedSourceArgs.layoutUrl) {
+      fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
+      shouldUpdate = true
+    }
+    if (shouldUpdate) {
+      setUnappliedSourceArgs({ds: undefined, dsParams: undefined, layoutUrl: undefined});
     }
   }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs]);
 

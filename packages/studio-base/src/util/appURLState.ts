@@ -8,6 +8,7 @@ import { fromRFC3339String, toRFC3339String, Time } from "@foxglove/rostime";
 
 export type AppURLState = {
   ds?: string;
+  layoutUrl?: string;
   dsParams?: Record<string, string>;
   time?: Time;
 };
@@ -38,6 +39,14 @@ export function updateAppURLState(url: URL, urlState: AppURLState): URL {
     }
   }
 
+  if ("layoutUrl" in urlState) {
+    if (urlState.layoutUrl) {
+      newURL.searchParams.set("layoutUrl", urlState.layoutUrl);
+    } else {
+      newURL.searchParams.delete("layoutUrl");
+    }
+  }
+
   if ("dsParams" in urlState) {
     [...newURL.searchParams].forEach(([k]) => {
       if (k.startsWith("ds.")) {
@@ -64,6 +73,7 @@ export function updateAppURLState(url: URL, urlState: AppURLState): URL {
  */
 export function parseAppURLState(url: URL): AppURLState | undefined {
   const ds = url.searchParams.get("ds") ?? undefined;
+  const layoutUrl = url.searchParams.get("layoutUrl");
   const timeString = url.searchParams.get("time");
   const time = timeString == undefined ? undefined : fromRFC3339String(timeString);
   const dsParams: Record<string, string> = {};
@@ -78,6 +88,7 @@ export function parseAppURLState(url: URL): AppURLState | undefined {
     {
       time,
       ds,
+      layoutUrl,
       dsParams: _.isEmpty(dsParams) ? undefined : dsParams,
     },
     _.isEmpty,
