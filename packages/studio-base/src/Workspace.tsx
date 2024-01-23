@@ -448,6 +448,7 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
         onDoubleClick={props.onAppBarDoubleClick}
         showCustomWindowControls={props.showCustomWindowControls}
         isMaximized={props.isMaximized}
+        initialZoomFactor={props.initialZoomFactor}
         onMinimizeWindow={props.onMinimizeWindow}
         onMaximizeWindow={props.onMaximizeWindow}
         onUnmaximizeWindow={props.onUnmaximizeWindow}
@@ -458,6 +459,7 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
       AppBarComponent,
       props.appBarLeftInset,
       props.isMaximized,
+      props.initialZoomFactor,
       props.onAppBarDoubleClick,
       props.onCloseWindow,
       props.onMaximizeWindow,

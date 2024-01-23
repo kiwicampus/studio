@@ -112,6 +112,8 @@ export const ALL_SUPPORTED_IMAGE_SCHEMAS = new Set([
   ...COMPRESSED_VIDEO_DATATYPES,
 ]);
 
+const SUPPORTED_RAW_IMAGE_SCHEMAS = new Set([...RAW_IMAGE_DATATYPES, ...ROS_IMAGE_DATATYPES]);
+
 const ALL_SUPPORTED_CALIBRATION_SCHEMAS = new Set([
   ...CAMERA_INFO_DATATYPES,
   ...CAMERA_CALIBRATION_DATATYPES,
@@ -353,6 +355,7 @@ export class ImageMode
    * Also auto-select a new calibration topic to match the new image topic.
    */
   #handleTopicsChanged = () => {
+    this.#annotations.handleTopicsChanged(this.renderer.topics);
     if (this.getImageModeSettings().imageTopic != undefined) {
       return;
     }
@@ -408,8 +411,14 @@ export class ImageMode
 
     const settings = this.getImageModeSettings();
 
-    const { imageTopic, calibrationTopic, synchronize, flipHorizontal, flipVertical, rotation } =
-      settings;
+    const {
+      imageTopic: imageTopicName,
+      calibrationTopic,
+      synchronize,
+      flipHorizontal,
+      flipVertical,
+      rotation,
+    } = settings;
 
     const imageTopics = filterMap(this.renderer.topics ?? [], (topic) => {
       if (!topicIsConvertibleToSchema(topic, this.supportedImageSchemas)) {
@@ -429,21 +438,20 @@ export class ImageMode
     );
 
     // Sort calibration topics with prefixes matching the image topic to the top.
-    if (imageTopic) {
-      sortPrefixMatchesToFront(calibrationTopics, imageTopic, (option) => option.label);
+    if (imageTopicName) {
+      sortPrefixMatchesToFront(calibrationTopics, imageTopicName, (option) => option.label);
     }
 
     // add unselected camera calibration option
     calibrationTopics.unshift({ label: "None", value: undefined });
 
-    const imageTopicExists = !(
-      imageTopic && !imageTopics.some((topic) => topic.value === imageTopic)
-    );
+    const imageTopicExists =
+      !imageTopicName || imageTopics.some((topic) => topic.value === imageTopicName);
     this.renderer.settings.errors.errorIfFalse(
       imageTopicExists,
       IMAGE_TOPIC_PATH,
       IMAGE_TOPIC_UNAVAILABLE,
-      `${imageTopic} is not available`,
+      `${imageTopicName} is not available`,
     );
 
     const calibrationTopicExists = !(
@@ -487,7 +495,7 @@ export class ImageMode
     fields.imageTopic = {
       label: t3D("topic"),
       input: "select",
-      value: imageTopic,
+      value: imageTopicName,
       options: imageTopics,
       error: imageTopicError,
     };
@@ -525,21 +533,30 @@ export class ImageMode
       ],
     };
 
-    const colorModeFields = colorModeSettingsFields({
-      config: settings as ImageModeConfig,
+    const imageTopic =
+      imageTopicName != undefined ? this.renderer.topicsByName?.get(imageTopicName) : undefined;
+    const isRawImageTopic =
+      imageTopic != undefined &&
+      topicIsConvertibleToSchema(imageTopic, SUPPORTED_RAW_IMAGE_SCHEMAS);
 
-      defaults: {
-        gradient: DEFAULT_CONFIG.gradient,
-      },
-      modifiers: {
-        supportsPackedRgbModes: false,
-        supportsRgbaFieldsMode: false,
-        hideFlatColor: true,
-        hideExplicitAlpha: true,
-      },
-    });
+    // color settings only apply to raw image topics, so we can hide them otherwise
+    if (isRawImageTopic) {
+      const colorModeFields = colorModeSettingsFields({
+        config: settings as ImageModeConfig,
 
-    Object.assign(fields, colorModeFields);
+        defaults: {
+          gradient: DEFAULT_CONFIG.gradient,
+        },
+        modifiers: {
+          supportsPackedRgbModes: false,
+          supportsRgbaFieldsMode: false,
+          hideFlatColor: true,
+          hideExplicitAlpha: true,
+        },
+      });
+
+      Object.assign(fields, colorModeFields);
+    }
 
     return [
       {
@@ -653,10 +670,10 @@ export class ImageMode
       return;
     }
     if (this.supportedImageSchemas.has(path.rootSchemaName)) {
-      draft.imageMode.imageTopic = path.path;
+      draft.imageMode.imageTopic = path.topicName;
     } else if (this.#annotations.supportedAnnotationSchemas.has(path.rootSchemaName)) {
       draft.imageMode.annotations ??= {};
-      draft.imageMode.annotations[path.path] = { visible: true };
+      draft.imageMode.annotations[path.topicName] = { visible: true };
     }
   };
 
@@ -675,7 +692,7 @@ export class ImageMode
     if (newState.missingAnnotationTopics) {
       this.#removeImageRenderable();
     }
-    if (newState.image != undefined && newState.image !== oldState?.image) {
+    if (newState.image != undefined && newState.image.message !== oldState?.image?.message) {
       this.#handleImageChange(newState.image, newState.image.message);
     }
     if (newState.cameraInfo != undefined && newState.cameraInfo !== oldState?.cameraInfo) {

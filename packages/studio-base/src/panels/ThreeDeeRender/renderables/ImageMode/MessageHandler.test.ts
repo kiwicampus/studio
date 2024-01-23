@@ -265,7 +265,9 @@ describe("MessageHandler: synchronized = true", () => {
         annotations1: { visible: true },
         annotations2: { visible: true },
       },
-    });
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations1", "annotations2"]);
     const time = 2n;
 
     const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
@@ -299,6 +301,43 @@ describe("MessageHandler: synchronized = true", () => {
     expect(state.missingAnnotationTopics).toEqual(["annotations2"]);
   });
 
+  it("shows state with image and annotation if one of two visible image annotation topics is unavailable", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: {
+          annotations1: { visible: true },
+          annotations2: { visible: true },
+        },
+      },
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations1"]);
+    const time = 2n;
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
+      timestamp: fromNanoSec(time),
+    });
+
+    const annotation1 = createCircleAnnotations([time]);
+    const annotationMessage1 = wrapInMessageEvent(
+      "annotations1",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation1,
+    );
+
+    messageHandler.handleRawImage(image);
+    messageHandler.handleAnnotations(annotationMessage1 as MessageEvent<ImageAnnotations>);
+    const state = messageHandler.getRenderStateAndUpdateHUD();
+
+    expect(state.image).not.toBeUndefined();
+    expect(state.annotationsByTopic?.get("annotations1")).not.toBeUndefined();
+    expect(state.annotationsByTopic?.get("annotations2")).toBeUndefined();
+    expect(state.presentAnnotationTopics).toBeUndefined();
+    expect(state.missingAnnotationTopics).toBeUndefined();
+  });
   it("shows most recent image and annotations with same timestamps", () => {
     const messageHandler = new MessageHandler({
       synchronize: true,
@@ -346,10 +385,15 @@ describe("MessageHandler: synchronized = true", () => {
   });
 
   it("shows most older image and annotations with same timestamps if newer messages have different timestamps", () => {
-    const messageHandler = new MessageHandler({
-      synchronize: true,
-      annotations: { annotations: { visible: true } },
-    });
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: { annotations: { visible: true } },
+      },
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations"]);
 
     const time = 2n;
 
@@ -393,10 +437,15 @@ describe("MessageHandler: synchronized = true", () => {
   });
 
   it("does not show image in state if it hasn't received requisite annotations at same timestamp", () => {
-    const messageHandler = new MessageHandler({
-      synchronize: true,
-      annotations: { annotations1: { visible: true }, annotations2: { visible: true } },
-    });
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: { annotations1: { visible: true }, annotations2: { visible: true } },
+      },
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations1", "annotations2"]);
     const time = 2n;
 
     const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
@@ -527,6 +576,370 @@ describe("MessageHandler: synchronized = true", () => {
   });
 });
 
+describe("MessageHandler: hud item display", () => {
+  it("init: waiting for images if no calibration topic specified", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler({ synchronize: false }, hud);
+
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_IMAGE_EMPTY_HUD_ITEM]);
+  });
+  it("init: waiting for both if calibration topic specified", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      { synchronize: false, calibrationTopic: "exists" },
+      hud,
+    );
+
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_BOTH_HUD_ITEM, WAITING_FOR_IMAGE_NOTICE_HUD_ITEM]);
+  });
+  it("waiting for image notice if calibration received", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      { synchronize: false, calibrationTopic: "exists" },
+      hud,
+    );
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_IMAGE_NOTICE_HUD_ITEM]);
+  });
+  it("is waiting for calibration if topic specified and image received", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      { synchronize: false, calibrationTopic: "info" },
+      hud,
+    );
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_CALIBRATION_HUD_ITEM]);
+  });
+
+  it("is waiting for image if image topic is changed after recieving image", () => {
+    const hud = new HUDItemManager(() => {});
+    const initConfig = { synchronize: false, imageTopic: "image1" };
+    const messageHandler = new MessageHandler(initConfig, hud);
+
+    const image = wrapInMessageEvent<RawImage>("image1", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+
+    messageHandler.setConfig({ ...initConfig, imageTopic: "image2" });
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_IMAGE_EMPTY_HUD_ITEM]);
+  });
+
+  it("shows waiting for Both if calibration topic changed after only receiving calibration message", () => {
+    const hud = new HUDItemManager(() => {});
+    const initConfig = {
+      synchronize: false,
+      calibrationTopic: "calibration1",
+    };
+    const messageHandler = new MessageHandler(initConfig, hud);
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration1",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    messageHandler.setConfig({ ...initConfig, calibrationTopic: "calibration2" });
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id").filter(
+      (item) => item.displayType === "empty",
+    );
+    expect(hudItems).toEqual([WAITING_FOR_BOTH_HUD_ITEM]);
+  });
+
+  it("shows waiting for calibration if calibration topic changed after receiving both image and calibration messages", () => {
+    const hud = new HUDItemManager(() => {});
+    const initConfig = {
+      synchronize: false,
+      calibrationTopic: "calibration1",
+    };
+    const messageHandler = new MessageHandler(initConfig, hud);
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration1",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+
+    const image = wrapInMessageEvent<RawImage>("image1", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+
+    messageHandler.setConfig({ ...initConfig, calibrationTopic: "calibration2" });
+
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_CALIBRATION_HUD_ITEM]);
+  });
+  it("displays waiting for image after calibration is set to undefined", () => {
+    const hud = new HUDItemManager(() => {});
+    const initConfig = {
+      synchronize: false,
+      calibrationTopic: "calibration1",
+    };
+    const messageHandler = new MessageHandler(initConfig, hud);
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration1",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    messageHandler.setConfig({ ...initConfig, calibrationTopic: undefined });
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id").filter(
+      ({ displayType }) => displayType === "empty",
+    );
+    expect(hudItems).toEqual([WAITING_FOR_IMAGE_EMPTY_HUD_ITEM]);
+  });
+
+  it("displays no info after receiving calibration and image", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      { synchronize: false, calibrationTopic: "calibration" },
+      hud,
+    );
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    const image = wrapInMessageEvent<RawImage>("image1", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([]);
+  });
+
+  it("displays no info after receiving image when calibration topic is undefined", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      { synchronize: false, calibrationTopic: undefined },
+      hud,
+    );
+
+    const image = wrapInMessageEvent<RawImage>("image1", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([]);
+  });
+  it("displays no info after receiving image when synchronized is true", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler({ synchronize: true }, hud);
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([]);
+  });
+
+  it("displays waiting for image after receiving annotations when synced", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: { annotations: { visible: true } },
+      },
+      hud,
+    );
+
+    const annotation = createCircleAnnotations([0n]);
+    const annotationMessage = wrapInMessageEvent(
+      "annotations",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation,
+    );
+    messageHandler.handleAnnotations(annotationMessage as MessageEvent<ImageAnnotations>);
+
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_IMAGE_EMPTY_HUD_ITEM]);
+  });
+
+  it("displays no info after receiving synced annotations and image", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: { annotations: { visible: true } },
+      },
+      hud,
+    );
+    const time = 2n;
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
+      timestamp: fromNanoSec(time),
+    });
+
+    const annotation = createCircleAnnotations([time]);
+    const annotationMessage = wrapInMessageEvent(
+      "annotations",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation,
+    );
+
+    messageHandler.handleRawImage(image);
+    messageHandler.handleAnnotations(annotationMessage as MessageEvent<ImageAnnotations>);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([]);
+  });
+
+  it("displays waiting for sync empty state (calibration=None) after receiving image and annotations with mismatched timestamps", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: {
+          annotations1: { visible: true },
+          annotations2: { visible: true },
+        },
+      },
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations1", "annotations2"]);
+    const time = 2n;
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
+      timestamp: fromNanoSec(time),
+    });
+
+    const annotation1 = createCircleAnnotations([time]);
+    const annotationMessage1 = wrapInMessageEvent(
+      "annotations1",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation1,
+    );
+    const annotation2 = createCircleAnnotations([time + 1n]);
+    const annotationMessage2 = wrapInMessageEvent(
+      "annotations2",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation2,
+    );
+
+    messageHandler.handleRawImage(image);
+    messageHandler.handleAnnotations(annotationMessage1 as MessageEvent<ImageAnnotations>);
+    messageHandler.handleAnnotations(annotationMessage2 as MessageEvent<ImageAnnotations>);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_SYNC_EMPTY_HUD_ITEM]);
+  });
+
+  it("displays waiting for sync empty state (calibrationTopic exists) after receiving image and annotations with mismatched timestamps", () => {
+    const hud = new HUDItemManager(() => {});
+    const messageHandler = new MessageHandler(
+      {
+        synchronize: true,
+        annotations: {
+          annotations1: { visible: true },
+          annotations2: { visible: true },
+        },
+        calibrationTopic: "calibration",
+      },
+      hud,
+    );
+    messageHandler.setAvailableAnnotationTopics(["annotations1", "annotations2"]);
+    const time = 2n;
+
+    const image = wrapInMessageEvent<RawImage>("image", "foxglove.RawImage", 0n, {
+      timestamp: fromNanoSec(time),
+    });
+
+    const annotation1 = createCircleAnnotations([time]);
+    const annotationMessage1 = wrapInMessageEvent(
+      "annotations1",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation1,
+    );
+    const annotation2 = createCircleAnnotations([time + 1n]);
+    const annotationMessage2 = wrapInMessageEvent(
+      "annotations2",
+      "foxglove.ImageAnnotations",
+      0n,
+      annotation2,
+    );
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    messageHandler.handleRawImage(image);
+    messageHandler.handleAnnotations(annotationMessage1 as MessageEvent<ImageAnnotations>);
+    messageHandler.handleAnnotations(annotationMessage2 as MessageEvent<ImageAnnotations>);
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([WAITING_FOR_SYNC_NOTICE_HUD_ITEM]);
+  });
+
+  it("displays no info after going from unsynced to synced and back", () => {
+    const hud = new HUDItemManager(() => {});
+    const initConfig = { synchronize: false, calibrationTopic: "calibration" };
+    const messageHandler = new MessageHandler(initConfig, hud);
+
+    const cameraInfo = wrapInMessageEvent<CameraCalibration>(
+      "calibration",
+      "foxglove.CameraCalibration",
+      0n,
+    );
+    messageHandler.handleCameraInfo(cameraInfo);
+    const image = wrapInMessageEvent<RawImage>("image1", "foxglove.RawImage", 0n);
+    messageHandler.handleRawImage(image);
+
+    messageHandler.setConfig({ ...initConfig, synchronize: true, calibrationTopic: "calibration" });
+    messageHandler.setConfig({
+      ...initConfig,
+      synchronize: false,
+      calibrationTopic: "calibration",
+    });
+
+    messageHandler.getRenderStateAndUpdateHUD();
+
+    const hudItems = _.sortBy(hud.getHUDItems(), "id");
+    expect(hudItems).toEqual([]);
+  });
+});
 function createCircleAnnotations(atTimes: bigint[]): ImageAnnotations {
   return {
     circles: atTimes.map((time) => ({
