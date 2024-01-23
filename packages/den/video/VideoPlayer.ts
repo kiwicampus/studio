@@ -4,6 +4,7 @@
 
 import { Mutex } from "async-mutex";
 import EventEmitter from "eventemitter3";
+import Logger from "@foxglove/log";
 
 // foxglove-depcheck-used: @types/dom-webcodecs
 
@@ -15,6 +16,8 @@ export type VideoPlayerEventTypes = {
   warn: (message: string) => void;
   error: (error: Error) => void;
 };
+
+const log = Logger.getLogger(__filename);
 
 /**
  * A wrapper around the WebCodecs VideoDecoder API that is safe to use from
@@ -31,6 +34,8 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
   #timeoutId: ReturnType<typeof setTimeout> | undefined;
   #pendingFrame: VideoFrame | undefined;
   #codedSize: { width: number; height: number } | undefined;
+  // Stores the last decoded frame as an ImageBitmap, should be set after decode()
+  lastImageBitmap: ImageBitmap | undefined;
 
   /** Reports whether video decoding is supported in this browser session */
   public static IsSupported(): boolean {
@@ -59,9 +64,19 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
       // Optimize for latency means we do not have to call flush() in every decode() call
       // See <https://github.com/w3c/webcodecs/issues/206>
       decoderConfig.optimizeForLatency = true;
-      // decoderConfig.hardwareAcceleration = "prefer-hardware";
 
-      const support = await VideoDecoder.isConfigSupported(decoderConfig);
+      // Try with 'prefer-hardware' first
+      let modifiedConfig = { ...decoderConfig };
+      modifiedConfig.hardwareAcceleration = "prefer-hardware";
+
+      let support = await VideoDecoder.isConfigSupported(modifiedConfig);
+      if (support.supported !== true) {
+        log.warn(`VideoDecoder does not support configuration ${JSON.stringify(modifiedConfig)}. Trying without 'prefer-hardware'`);
+        // If 'prefer-hardware' is not supported, try without it
+        modifiedConfig = { ...decoderConfig };
+        support = await VideoDecoder.isConfigSupported(modifiedConfig);
+      }
+
       if (support.supported !== true) {
         const err = new Error(
           `VideoDecoder does not support configuration ${JSON.stringify(decoderConfig)}`,

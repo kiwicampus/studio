@@ -77,6 +77,7 @@ export async function decodeCompressedVideoToBitmap(
   );
   if (videoFrame) {
     const imageBitmap = await self.createImageBitmap(videoFrame, { resizeWidth });
+    videoPlayer.lastImageBitmap = imageBitmap;
     videoFrame.close();
     return imageBitmap;
   }

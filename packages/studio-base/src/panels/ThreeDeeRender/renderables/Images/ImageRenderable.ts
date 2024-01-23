@@ -246,8 +246,16 @@ export class ImageRenderable extends Renderable<ImageUserData> {
         const frameMsg = image as CompressedVideo;
 
         if (frameMsg.data.byteLength === 0) {
-          // Raise error so the caller can catch it
-          throw new Error("Empty video frame");
+          const error = "Empty video frame";
+          log.error(error);
+          // show last frame instead of error image if available
+          if (this.videoPlayer?.lastImageBitmap) {
+            return this.videoPlayer.lastImageBitmap;
+          }
+          // show black image instead of error image
+          return await emptyVideoFrame(this.videoPlayer, resizeWidth);
+          // Raise error so the caller can catch it and display an error image
+          throw new Error(error);
         }
 
         if (!this.videoPlayer) {
