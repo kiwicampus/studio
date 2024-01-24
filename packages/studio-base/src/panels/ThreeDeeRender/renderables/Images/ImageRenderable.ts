@@ -46,7 +46,7 @@ export const IMAGE_RENDERABLE_DEFAULT_SETTINGS: ImageRenderableSettings = {
   color: "#ffffff",
 };
 
-const IMAGE_FORMATS = new Set(["jpeg", "png", "webp"]);
+const IMAGE_FORMATS = new Set(["jpeg", "jpg", "png", "webp"]);
 const VIDEO_FORMATS = new Set(["h264"]);
 
 export type ImageUserData = BaseUserData & {
