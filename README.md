@@ -72,7 +72,7 @@ The official binary distributions available at [studio.foxglove.dev](https://stu
 Foxglove Studio can be self-hosted using our [docker image](https://ghcr.io/foxglove/studio). Please note that this build does not contain any closed source functionality.
 
 ### Building the container
-Please after cloning the repo you need to upload some stuff from git lfs with:
+Please after cloning the repo you need to download some stuff from git lfs with:
 ```sh
 git lfs pull
 ```
