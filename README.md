@@ -71,11 +71,40 @@ The official binary distributions available at [studio.foxglove.dev](https://stu
 
 Foxglove Studio can be self-hosted using our [docker image](https://ghcr.io/foxglove/studio). Please note that this build does not contain any closed source functionality.
 
+### Building the container
+Please after cloning the repo you need to upload some stuff from git lfs with:
 ```sh
-docker run --rm -p "8080:8080" ghcr.io/foxglove/studio:latest
+git lfs pull
+```
+
+After that just build the container with:
+```sh
+docker build -t local-foxglove .
+
+```
+
+### Running the container
+
+```sh
+docker run --rm -p "8080:8080" local-foxglove
 ```
 
 Foxglove Studio will be accessible in your browser at [localhost:8080](http://localhost:8080/).
+
+### Developing with the container
+The build process takes some minutes, so it is not practical to rebuild the container every time you make a change. You can use the following command to mount the local source code into the container and run the development server. But first, you need to modify the Dockerfile to comment the release part. For that, comment ALL lines from line 7 to the end of the Dockerfile. Then rebuild. After that, you can run the following command:
+
+```sh
+docker run --rm -it -p "8080:8080" --volume "${PWD}":"/src" --entrypoint bash foxglove-kiwi:dev
+```
+It should open a bash terminal inside the container. Then you can run the following commands to start the development server:
+
+```sh
+yarn install
+yarn run web:serve
+```
+
+It will server the web app and recompile interactively when you make changes. You can access the web app at [localhost:8080](http://localhost:8080/).
 
 ### Overriding the default layout
 
