@@ -95,7 +95,7 @@ Foxglove Studio will be accessible in your browser at [localhost:8080](http://lo
 The build process takes some minutes, so it is not practical to rebuild the container every time you make a change. You can use the following command to mount the local source code into the container and run the development server. But first, you need to modify the Dockerfile to comment the release part. For that, comment ALL lines from line 7 to the end of the Dockerfile. Then rebuild. After that, you can run the following command:
 
 ```sh
-docker run --rm -it -p "8080:8080" --volume "${PWD}":"/src" --entrypoint bash foxglove-kiwi:dev
+docker run --rm -it -p "8080:8080" --volume "${PWD}":"/src" --entrypoint bash local-foxglove
 ```
 It should open a bash terminal inside the container. Then you can run the following commands to start the development server:
 
