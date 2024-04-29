@@ -287,11 +287,12 @@ export default class RosbridgePlayer implements Player {
       //  const type = result.types[i];
       //  const messageDefinition = result.typedefs_full_text[i];
       for ( const [topicName, type] of Object.entries(result) ) {
-	const messageDefinition = type;
+	    const messageDefinition = "";
 
         if (type == undefined || messageDefinition == undefined) {
-          topicsMissingDatatypes.push(topicName);
-          continue;
+          //topics.push({ name: topicName, schemaName: type });
+          //topicsMissingDatatypes.push(topicName);
+          //continue;
         }
         topics.push({ name: topicName, schemaName: type });
         datatypeDescriptions.push({ type, messageDefinition });		
