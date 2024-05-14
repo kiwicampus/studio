@@ -80,12 +80,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value != undefined;
 }
 
+
+
+
+interface ServiceResponse {
+    op: string;
+    service: string;
+    values: {
+        topics: string[];
+        types: string[];
+        typedefs_full_text: string[];
+    };
+    result: boolean;
+    id: string;
+}
+
+interface TypeIndex {
+    [type: string]: string | undefined;
+}
+
+
+
+
 // Connects to `rosbridge_server` instance using `roslibjs`. Currently doesn't support seeking or
 // showing simulated time, so current time from Date.now() is always used instead. Also doesn't yet
 // support raw ROS messages; instead we use the CBOR compression provided by roslibjs, which
 // unmarshalls into plain JS objects.
 export default class RosbridgePlayer implements Player {
   #url: string; // WebSocket URL.
+
+
+  #typeIndex: TypeIndex = {};
+
+
   #rosClient?: RosboardClient; // The roslibjs client when we're connected.
   #id: string = uuidv4(); // Unique ID for this player.
   #isRefreshing = false; // True if currently refreshing the node graph.
@@ -153,6 +180,28 @@ export default class RosbridgePlayer implements Player {
     // `workersocket` will open the actual WebSocket connection in a WebWorker.
     // const rosClient = new roslib.Ros({ url: this.#url, transportLibrary: "workersocket" });
     const rosClient = new RosboardClient({ url: this.#url });
+
+
+
+
+
+    // Load data.json synchronously using require
+    const data = require('./data.json');
+
+    // Process data from JSON file
+    const { values } = data; // Destructure values from the loaded JSON
+    const typeIndex: TypeIndex = {};
+    values.types.forEach((type: string, index: number) => {
+        typeIndex[type] = values.typedefs_full_text[index];
+    });
+
+    // Assign typeIndex to this.#typeIndex
+    Object.assign(this.#typeIndex, typeIndex);
+
+
+
+
+
 
     rosClient.on("connection", () => {
       log.info(`Connected to ${this.#url}`);
@@ -287,12 +336,12 @@ export default class RosbridgePlayer implements Player {
       //  const type = result.types[i];
       //  const messageDefinition = result.typedefs_full_text[i];
       for ( const [topicName, type] of Object.entries(result) ) {
-	    const messageDefinition = "";
+	    const messageDefinition = this.#typeIndex[type];
 
         if (type == undefined || messageDefinition == undefined) {
-          //topics.push({ name: topicName, schemaName: type });
-          //topicsMissingDatatypes.push(topicName);
-          //continue;
+          topics.push({ name: topicName + "(ERROR)", schemaName: type });
+          topicsMissingDatatypes.push(topicName);
+          continue;
         }
         topics.push({ name: topicName, schemaName: type });
         datatypeDescriptions.push({ type, messageDefinition });		
@@ -512,7 +561,8 @@ export default class RosbridgePlayer implements Player {
         try {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
-          const innerMessage = messageReader.readMessage(bytes);
+          // const innerMessage = messageReader.readMessage(bytes);
+          const innerMessage = message;
 
           // handle clock messages before choosing receiveTime so the clock can set its own receive time
           if (isClockMessage(topicName, innerMessage)) {
