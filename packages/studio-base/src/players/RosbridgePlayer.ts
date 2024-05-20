@@ -495,6 +495,10 @@ export default class RosbridgePlayer implements Player {
     this.#emitState();
   }
 
+  public function scaleBackArray(value: number, min: number, max: number): number {
+    return (value / 65535) * (max - min) + min;
+  }
+
   public close(): void {
     this.#closed = true;
     if (this.#rosClient) {
@@ -504,6 +508,16 @@ export default class RosbridgePlayer implements Player {
       clearTimeout(this.#emitTimer);
       this.#emitTimer = undefined;
     }
+  }
+
+  public _base64decode(base64: string) {
+    var binary_string = window.atob(base64);
+    var len = binary_string.length;
+    var bytes = new Uint8Array(len);
+    for (var i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
   }
 
   public setSubscriptions(subscriptions: SubscribePayload[]): void {
@@ -562,7 +576,81 @@ export default class RosbridgePlayer implements Player {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
           // const innerMessage = messageReader.readMessage(bytes);
+          if ( message._topic_type === 'sensor_msgs/msg/LaserScan' ) {
+            let rbounds = message._ranges_uint16.bounds;
+
+            let rdata = this._base64decode(message._ranges_uint16.points);
+
+            let rview = new DataView(rdata);
+            let num_ranges = rdata.byteLength / 2;
+            let points = new Float32Array(num_ranges);
+
+            // angle increment between points
+            let angle_incr = (message.angle_max - message.angle_min) / num_ranges;
+
+            let rrange = rbounds[1] - rbounds[0];
+            let rmin = rbounds[0];
+
+            for(let i=0; i<num_ranges; i++) {
+              let offset = i * 2;
+              let angle = message.angle_min + i * angle_incr;
+
+              let r_uint16 = rview.getUint16(offset, true);
+
+              if(r_uint16 === 65535) {
+                points[i] = NaN;
+                continue; // nan, -inf, inf mapped to 65535
+              }
+
+              let r = r_uint16 / 65534 * rrange + rmin;
+              points[i] = r;
+            }
+            message.ranges = points;
+            message.intensities = points;
+          } 
+          else if ( message._topic_type === 'sensor_msgs/msg/Image' ||
+                    message._topic_type === 'nav_msgs/msg/OccupancyGrid' ) {
+            let rdata = message._data_jpeg;
+
+            // Decode the base64 JPEG to pixel data
+            decodeBase64Jpeg(rdata)
+                .then((pixelData) => {
+                    // Assign the decoded RGB pixel data to message.data
+                    message.data = pixelData; // Uint8Array
+                })
+                .catch((error) => {
+                    console.error('Error decoding image:', error);
+                });
+          }
+          else if ( message._topic_type === 'sensor_msgs/msg/PointCloud2' ) {
+            const binaryData: ArrayBuffer = message._data_uint16.points;
+            const bounds: number[] = message._data_uint16.bounds;
+            
+            const xmin: number = bounds[0], xmax: number = bounds[1];
+            const ymin: number = bounds[2], ymax: number = bounds[3];
+            const zmin: number = bounds[4], zmax: number = bounds[5];
+            
+            const pointsArray: Uint16Array = new Uint16Array(binaryData);
+            
+            // Ensure the array is correctly sized
+            const numPoints: number = pointsArray.length / 3;
+            const points: Float32Array = new Float32Array(numPoints * 3);
+
+            for (let i: number = 0; i < numPoints; i++) {
+              const x: number = pointsArray[i * 3];
+              const y: number = pointsArray[i * 3 + 1];
+              const z: number = pointsArray[i * 3 + 2];
+
+              points[i * 3] = scaleBackArray(x, xmin, xmax);
+              points[i * 3 + 1] = scaleBackArray(y, ymin, ymax);
+              points[i * 3 + 2] = scaleBackArray(z, zmin, zmax);
+        }
+        
+        message.data = points;
+          }
+
           const innerMessage = message;
+          console.log ( innerMessage );
 
           // handle clock messages before choosing receiveTime so the clock can set its own receive time
           if (isClockMessage(topicName, innerMessage)) {
@@ -843,4 +931,34 @@ export default class RosbridgePlayer implements Player {
     }
    */
   }
+}
+
+function decodeBase64Jpeg(base64String: string): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Could not get 2D context'));
+                return;
+            }
+            console.log ( img.width );
+            canvas.width = img.width || 0; // Ensure width is defined or default to 0
+            canvas.height = img.height || 0; // Ensure height is defined or default to 0
+            ctx.drawImage(img, 0, 0);
+            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
+            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+                rgbData[j] = data[i] || 0;
+                rgbData[j + 1] = data[i + 1] || 0;
+                rgbData[j + 2] = data[i + 2] || 0;
+            }
+            resolve(rgbData);
+        };
+        img.src = `data:image/jpeg;base64,${base64String}`;
+        img.onerror = (error) => {
+            reject(error);
+        };
+    });
 }
