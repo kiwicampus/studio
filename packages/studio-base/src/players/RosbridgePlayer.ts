@@ -17,9 +17,7 @@ import * as _ from "lodash-es";
 import { v4 as uuidv4 } from "uuid";
 
 import { debouncePromise } from "@foxglove/den/async";
-import { filterMap } from "@foxglove/den/collection";
 import Log from "@foxglove/log";
-import roslib from "@foxglove/roslibjs";
 import { parse as parseMessageDefinition } from "@foxglove/rosmsg";
 import { MessageReader as ROS1MessageReader } from "@foxglove/rosmsg-serialization";
 import { MessageReader as ROS2MessageReader } from "@foxglove/rosmsg2-serialization";
@@ -47,37 +45,9 @@ const log = Log.getLogger(__dirname);
 
 const CAPABILITIES = [PlayerCapabilities.advertise, PlayerCapabilities.callServices];
 
-type RosNodeDetails = Record<
-  "subscriptions" | "publications" | "services",
-  { node: string; values: string[] }
->;
-
-function collateNodeDetails(
-  details: RosNodeDetails[],
-  key: keyof RosNodeDetails,
-): Map<string, Set<string>> {
-  return _.transform(
-    details,
-    (acc, detail) => {
-      const { node, values } = detail[key];
-      for (const value of values) {
-        if (!acc.has(value)) {
-          acc.set(value, new Set());
-        }
-        acc.get(value)?.add(node);
-      }
-    },
-    new Map<string, Set<string>>(),
-  );
-}
-
 function isClockMessage(topic: string, msg: unknown): msg is { clock: Time } {
   const maybeClockMsg = msg as { clock?: Time };
   return topic === "/clock" && maybeClockMsg.clock != undefined && !isNaN(maybeClockMsg.clock.sec);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value != undefined;
 }
 
 
@@ -103,7 +73,6 @@ export default class RosbridgePlayer implements Player {
 
   #rosClient?: RosboardClient; // The roslibjs client when we're connected.
   #id: string = uuidv4(); // Unique ID for this player.
-  #isRefreshing = false; // True if currently refreshing the node graph.
   #listener?: (arg0: PlayerState) => Promise<void>; // Listener for _emitState().
   #closed: boolean = false; // Whether the player has been completely closed using close().
   #providerTopics?: TopicWithSchemaName[]; // Topics as published by the WebSocket.
@@ -124,16 +93,13 @@ export default class RosbridgePlayer implements Player {
   #parsedMessages: MessageEvent[] = []; // Queue of messages that we'll send in next _emitState() call.
   #requestTopicsTimeout?: ReturnType<typeof setTimeout>; // setTimeout() handle for _requestTopics().
   // active publishers for the current connection
-  #topicPublishers = new Map<string, roslib.Topic>();
   // which topics we want to advertise to other nodes
-  #advertisements: AdvertiseOptions[] = [];
   #parsedTopics = new Set<string>();
   #receivedBytes: number = 0;
   #metricsCollector: PlayerMetricsCollectorInterface;
   #presence: PlayerPresence = PlayerPresence.NOT_PRESENT;
   #problems = new PlayerProblemManager();
   #emitTimer?: ReturnType<typeof setTimeout>;
-  #serviceTypeCache = new Map<string, Promise<string>>();
   readonly #sourceId: string;
   #rosVersion: 1 | 2 | undefined;
 
@@ -529,15 +495,11 @@ export default class RosbridgePlayer implements Player {
             let num_ranges = rdata.byteLength / 2;
             let points = new Float32Array(num_ranges);
 
-            // angle increment between points
-            let angle_incr = (message.angle_max - message.angle_min) / num_ranges;
-
             let rrange = rbounds[1] - rbounds[0];
             let rmin = rbounds[0];
 
             for(let i=0; i<num_ranges; i++) {
               let offset = i * 2;
-              let angle = message.angle_min + i * angle_incr;
 
               let r_uint16 = rview.getUint16(offset, true);
 
@@ -704,7 +666,10 @@ export default class RosbridgePlayer implements Player {
   }
 
   public setPublishers(publishers: AdvertiseOptions[]): void {
-    return;
+	  publishers;
+	  this.#getServiceType("");
+	  this.#refreshSystemState();
+	  return;
   }
 
   public setParameter(_key: string, _value: ParameterValue): void {
@@ -712,18 +677,18 @@ export default class RosbridgePlayer implements Player {
   }
 
   public publish({ topic, msg }: PublishPayload): void {
-    return;
+	  topic; msg;
+      return;
   }
 
   // Query the type name for this service. Cache the query to avoid looking it up again.
-  async #getServiceType(service: string): Promise<string> {
-    // Yep
-    throw new Error("Not connected");
-
+  async #getServiceType(_service: string): Promise<string> {
+	  return "";
   }
 
-  public async callService(service: string, request: unknown): Promise<unknown> {
-    return;
+  public async callService(_service: string, _request: unknown): Promise<unknown> {
+	  // no-op
+	  return;
   }
 
   // Bunch of unsupported stuff. Just don't do anything for these.
@@ -826,19 +791,4 @@ function decodeBase64Png(base64String: string): Promise<Uint8Array> {
             reject(error);
         };
     });
-}
-
-function base64ToUint8Array(base64String: string): Uint8Array {
-    // Decode the Base64 string to a binary string
-    const binaryString = atob(base64String);
-
-    // Create a Uint8Array from the binary string
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    return bytes;
 }
