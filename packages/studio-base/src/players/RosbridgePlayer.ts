@@ -81,20 +81,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 
-
-
-interface ServiceResponse {
-    op: string;
-    service: string;
-    values: {
-        topics: string[];
-        types: string[];
-        typedefs_full_text: string[];
-    };
-    result: boolean;
-    id: string;
-}
-
 interface TypeIndex {
     [type: string]: string | undefined;
 }
@@ -112,6 +98,8 @@ export default class RosbridgePlayer implements Player {
 
   #typeIndex: TypeIndex = {};
 
+  #cachedImage?: Uint8Array;
+  #cachedGrid?: Int8Array;
 
   #rosClient?: RosboardClient; // The roslibjs client when we're connected.
   #id: string = uuidv4(); // Unique ID for this player.
@@ -290,13 +278,6 @@ export default class RosbridgePlayer implements Player {
     }, 5000);
 
     try {
-      //const result = await new Promise<{
-      //  topics: string[];
-      //  types: string[];
-      //  typedefs_full_text: string[];
-      //}>((resolve, reject) => {
-      //  rosClient.getTopicsAndRawTypes(resolve, reject);
-      //});
       const result: { [topicName: string]: string } = await new Promise((resolve, reject) => {
           rosClient.getAvailableTopics().then(resolve).catch(reject);			      
       });
@@ -311,30 +292,8 @@ export default class RosbridgePlayer implements Player {
       const datatypeDescriptions = [];
       const messageReaders: Record<string, ROS1MessageReader | ROS2MessageReader> = {};
 
-      // Automatically detect the ROS version based on the datatypes.
-      // The rosbridge server itself publishes /rosout so the topic should be reliably present.
-      /*
-      if (result.types.includes("rcl_interfaces/msg/Log")) {
-        this.#rosVersion = 2;
-        this.#problems.removeProblem("unknownRosVersion");
-      } else if (result.types.includes("rosgraph_msgs/Log")) {
-        this.#rosVersion = 1;
-        this.#problems.removeProblem("unknownRosVersion");
-      } else {
-        this.#rosVersion = 1;
-        this.#problems.addProblem("unknownRosVersion", {
-          severity: "warn",
-          message: "Unable to detect ROS version, assuming ROS 1",
-        });
-      }
-     */
-
       this.#rosVersion = 2;
 
-      //for (let i = 0; i < result.topics.length; i++) {
-      //  const topicName = result.topics[i]!;
-      //  const type = result.types[i];
-      //  const messageDefinition = result.typedefs_full_text[i];
       for ( const [topicName, type] of Object.entries(result) ) {
 	    const messageDefinition = this.#typeIndex[type];
 
@@ -393,11 +352,6 @@ export default class RosbridgePlayer implements Player {
       // Try subscribing again, since we might now be able to subscribe to some new topics.
       this.setSubscriptions(this.#requestedSubscriptions);
 
-      // Refresh the full graph topology
-      /*
-      this.#refreshSystemState().catch((error) => {
-        log.error(error);
-      }); */
     } catch (error) {
       log.error(error);
       clearTimeout(topicsStallWarningTimeout);
@@ -495,7 +449,8 @@ export default class RosbridgePlayer implements Player {
     this.#emitState();
   }
 
-  public function scaleBackArray(value: number, min: number, max: number): number {
+  public scaleBackArray(value: number, min: number, max: number): number {
+    if (min === max) return min; // Prevent division by zero
     return (value / 65535) * (max - min) + min;
   }
 
@@ -543,13 +498,6 @@ export default class RosbridgePlayer implements Player {
       if (this.#topicSubscriptions.has(topicName)) {
         continue;
       }
-      /*
-      const topic = new roslib.Topic({
-        ros: this.#rosClient,
-        name: topicName,
-        compression: "cbor-raw",
-      });
-      */
 
       const availTopic = availableTopicsByTopicName[topicName];
       if (!availTopic) {
@@ -564,10 +512,6 @@ export default class RosbridgePlayer implements Player {
 
       const problemId = `message:${topicName}`;
 
-      /*
-      topic.subscribe((message) => {
-      */
-      // Magic :v
       this.#rosClient.addTopicCallback(topicName, (message) => {
         if (!this.#providerTopics) {
           return;
@@ -608,45 +552,88 @@ export default class RosbridgePlayer implements Player {
             message.ranges = points;
             message.intensities = points;
           } 
-          else if ( message._topic_type === 'sensor_msgs/msg/Image' ||
-                    message._topic_type === 'nav_msgs/msg/OccupancyGrid' ) {
+          else if ( message._topic_type === 'sensor_msgs/msg/Image' ) {
             let rdata = message._data_jpeg;
+
+            if ( this.#cachedImage != undefined )
+                message.data = this.#cachedImage;
 
             // Decode the base64 JPEG to pixel data
             decodeBase64Jpeg(rdata)
                 .then((pixelData) => {
                     // Assign the decoded RGB pixel data to message.data
                     message.data = pixelData; // Uint8Array
+                    this.#cachedImage = pixelData;
+                })
+                .catch((error) => {
+                    console.error('Error decoding image:', error);
+                });
+          }
+          else if ( message._topic_type === 'nav_msgs/msg/OccupancyGrid' ) {
+            let rdata = message._data_jpeg;
+
+            if ( this.#cachedGrid != undefined )
+                message.data = this.#cachedGrid;
+
+            // Decode the base64 JPEG to pixel data
+            decodeBase64Png(rdata)
+                .then((pixelData) => {
+                    // Assign the decoded RGB pixel data to message.data
+                    const decodedA = new Int8Array(pixelData); // Uint8Array
+
+                    const sumsArray = [];
+                    let alen = decodedA.length;
+                    if (decodedA != undefined) {
+                        for (let i=0; i < alen; i+=3) {
+                            sumsArray.push( 0.3 * (decodedA[i] || 0)
+										  + 0.59 * (decodedA[i+1] || 0)
+										  + 0.11 * (decodedA[i+2] || 0) );
+                        }
+                        this.#cachedGrid = new Int8Array( sumsArray );
+                        message.data = this.#cachedGrid;
+                    }
+
                 })
                 .catch((error) => {
                     console.error('Error decoding image:', error);
                 });
           }
           else if ( message._topic_type === 'sensor_msgs/msg/PointCloud2' ) {
-            const binaryData: ArrayBuffer = message._data_uint16.points;
+            let rdata = this._base64decode(message._data_uint16.points)
+            console.log ( rdata );
+            let rview = new DataView(rdata);
+
+            let num_ranges = rdata.byteLength / 6;
+
             const bounds: number[] = message._data_uint16.bounds;
             
-            const xmin: number = bounds[0], xmax: number = bounds[1];
-            const ymin: number = bounds[2], ymax: number = bounds[3];
-            const zmin: number = bounds[4], zmax: number = bounds[5];
+            const xmin: number = bounds[0] || 0, xmax: number = bounds[1] || 0;
+            const ymin: number = bounds[2] || 0, ymax: number = bounds[3] || 0;
+            const zmin: number = bounds[4] || 0, zmax: number = bounds[5] || 0;
             
-            const pointsArray: Uint16Array = new Uint16Array(binaryData);
+            const pointsFloat32: Float32Array = new Float32Array(num_ranges*3);
+
+            for (let i: number = 0; i < num_ranges; i++) {
+              let offset = i * 6;
+              const x: number = rview.getUint16(offset, true);
+              const y: number = rview.getUint16(offset+2, true);
+              const z: number = rview.getUint16(offset+4, true);
+
+              pointsFloat32[i * 3] = this.scaleBackArray(x, xmin, xmax);
+              pointsFloat32[i * 3 + 1] = this.scaleBackArray(y, ymin, ymax);
+              pointsFloat32[i * 3 + 2] = this.scaleBackArray(z, zmin, zmax);
+            }
+
+            //const buffer = paddedPointsFloat32.buffer;
+            const buffer = pointsFloat32.buffer;
+            const points: Uint8Array = new Uint8Array(buffer);
+
+            message.width = pointsFloat32.length/3;
+            message.height = 1;
+            message.point_step = 12;
+            message.row_step = message.width * message.point_step;
             
-            // Ensure the array is correctly sized
-            const numPoints: number = pointsArray.length / 3;
-            const points: Float32Array = new Float32Array(numPoints * 3);
-
-            for (let i: number = 0; i < numPoints; i++) {
-              const x: number = pointsArray[i * 3];
-              const y: number = pointsArray[i * 3 + 1];
-              const z: number = pointsArray[i * 3 + 2];
-
-              points[i * 3] = scaleBackArray(x, xmin, xmax);
-              points[i * 3 + 1] = scaleBackArray(y, ymin, ymax);
-              points[i * 3 + 2] = scaleBackArray(z, zmin, zmax);
-        }
-        
-        message.data = points;
+            message.data = points;
           }
 
           const innerMessage = message;
@@ -701,7 +688,7 @@ export default class RosbridgePlayer implements Player {
       this.#topicSubscriptions.add(topicName);
     }
 
-    // Unsubscribe from topics that we are subscribed to but shouldn't be.
+    // Unsubscribe from topics that we are subscribed to but shouldnt be.
     // for (const [topicName, topic] of this.#topicSubscriptions) {
     for ( const topicName of this.#topicSubscriptions ) {
       if (!topicNames.includes(topicName)) {
@@ -717,19 +704,7 @@ export default class RosbridgePlayer implements Player {
   }
 
   public setPublishers(publishers: AdvertiseOptions[]): void {
-    // Not
     return;
-
-    /*
-    // Since `setPublishers` is rarely called, we can get away with just throwing away the old
-    // Roslib.Topic objects and creating new ones.
-    for (const publisher of this.#topicPublishers.values()) {
-      publisher.unadvertise();
-    }
-    this.#topicPublishers.clear();
-    this.#advertisements = publishers;
-    this.#setupPublishers();
-   */
   }
 
   public setParameter(_key: string, _value: ParameterValue): void {
@@ -737,22 +712,7 @@ export default class RosbridgePlayer implements Player {
   }
 
   public publish({ topic, msg }: PublishPayload): void {
-    // Sorry
     return;
-
-    /*
-    const publisher = this.#topicPublishers.get(topic);
-    if (!publisher) {
-      if (this.#advertisements.some((opts) => opts.topic === topic)) {
-        // Topic was advertised but the connection is not yet established
-        return;
-      }
-      throw new Error(
-        `Tried to publish on a topic that is not registered as a publisher: ${topic}`,
-      );
-    }
-    publisher.publish(msg);
-    */
   }
 
   // Query the type name for this service. Cache the query to avoid looking it up again.
@@ -760,62 +720,10 @@ export default class RosbridgePlayer implements Player {
     // Yep
     throw new Error("Not connected");
 
-    /*
-    if (!this.#rosClient) {
-      throw new Error("Not connected");
-    }
-
-    const existing = this.#serviceTypeCache.get(service);
-    if (existing) {
-      return await existing;
-    }
-
-    const rosClient = this.#rosClient;
-    const serviceTypePromise = new Promise<string>((resolve, reject) => {
-      rosClient.getServiceType(service, resolve, reject);
-    });
-
-    this.#serviceTypeCache.set(service, serviceTypePromise);
-
-    return await serviceTypePromise;
-    */
   }
 
   public async callService(service: string, request: unknown): Promise<unknown> {
-    // You wish
     return;
-
-    /*
-    if (!this.#rosClient) {
-      throw new Error("Not connected");
-    }
-
-    if (!isRecord(request)) {
-      throw new Error("RosbridgePlayer#callService request must be an object");
-    }
-
-    const serviceType = await this.#getServiceType(service);
-
-    // Create a proxy object for dispatching our service call
-    const proxy = new roslib.Service({
-      ros: this.#rosClient,
-      name: service,
-      serviceType,
-    });
-
-    // Send the service request
-    return await new Promise<Record<string, unknown>>((resolve, reject) => {
-      proxy.callService(
-        request,
-        (response: Record<string, unknown>) => {
-          resolve(response);
-        },
-        (error: Error) => {
-          reject(error);
-        },
-      );
-    });
-    */
   }
 
   // Bunch of unsupported stuff. Just don't do anything for these.
@@ -836,30 +744,8 @@ export default class RosbridgePlayer implements Player {
   }
 
   #setupPublishers(): void {
-    // Better not
     return;
 
-    /*
-    // This function will be called again once a connection is established
-    if (!this.#rosClient) {
-      return;
-    }
-
-    if (this.#advertisements.length <= 0) {
-      return;
-    }
-
-    for (const { topic, schemaName: datatype } of this.#advertisements) {
-      const roslibTopic = new roslib.Topic({
-        ros: this.#rosClient,
-        name: topic,
-        messageType: datatype,
-        queue_size: 0,
-      });
-      this.#topicPublishers.set(topic, roslibTopic);
-      roslibTopic.advertise();
-    }
-   */
   }
 
   #addInternalSubscriptions(subscriptions: SubscribePayload[]): void {
@@ -878,58 +764,8 @@ export default class RosbridgePlayer implements Player {
   // Refreshes the full system state graph. Runs in the background so we don't
   // block app startup while mapping large node graphs.
   async #refreshSystemState(): Promise<void> {
-    // Unulckily, Rosboard dont use these
     return;
 
-    /*
-    if (this.#isRefreshing) {
-      return;
-    }
-
-    try {
-      this.#isRefreshing = true;
-
-      const nodes = await new Promise<string[]>((resolve, reject) => {
-        this.#rosClient?.getNodes((fetchedNodes) => {
-          resolve(fetchedNodes);
-        }, reject);
-      });
-
-      const promises = nodes.map(async (node) => {
-        return await new Promise<RosNodeDetails>((resolve, reject) => {
-          this.#rosClient?.getNodeDetails(
-            node,
-            (subscriptions, publications, services) => {
-              resolve({
-                publications: { node, values: publications },
-                services: { node, values: services },
-                subscriptions: { node, values: subscriptions },
-              });
-            },
-            reject,
-          );
-        });
-      });
-
-      const results = await Promise.allSettled(promises);
-      const fulfilled = filterMap(results, (item) =>
-        item.status === "fulfilled" ? item.value : undefined,
-      );
-      this.#publishedTopics = collateNodeDetails(fulfilled, "publications");
-      this.#subscribedTopics = collateNodeDetails(fulfilled, "subscriptions");
-      this.#services = collateNodeDetails(fulfilled, "services");
-
-      this.#emitState();
-    } catch (error) {
-      this.#problems.addProblem("requestTopics:system-state", {
-        severity: "error",
-        message: "Failed to fetch node details from rosbridge",
-        error,
-      });
-    } finally {
-      this.#isRefreshing = false;
-    }
-   */
   }
 }
 
@@ -961,4 +797,48 @@ function decodeBase64Jpeg(base64String: string): Promise<Uint8Array> {
             reject(error);
         };
     });
+}
+
+function decodeBase64Png(base64String: string): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Could not get 2D context'));
+                return;
+            }
+            canvas.width = img.width || 0; // Ensure width is defined or default to 0
+            canvas.height = img.height || 0; // Ensure height is defined or default to 0
+            ctx.drawImage(img, 0, 0);
+            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
+            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+                rgbData[j] = data[i] || 0;
+                rgbData[j + 1] = data[i + 1] || 0;
+                rgbData[j + 2] = data[i + 2] || 0;
+            }
+            resolve(rgbData);
+        };
+        img.src = `data:image/png;base64,${base64String}`;
+        img.onerror = (error) => {
+            reject(error);
+        };
+    });
+}
+
+function base64ToUint8Array(base64String: string): Uint8Array {
+    // Decode the Base64 string to a binary string
+    const binaryString = atob(base64String);
+
+    // Create a Uint8Array from the binary string
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    return bytes;
 }
