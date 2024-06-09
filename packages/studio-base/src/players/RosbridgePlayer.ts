@@ -449,7 +449,7 @@ export default class RosbridgePlayer implements Player {
   }
 
   // Helper methods
-  public scaleBackArray(value: number, min: number, max: number): number {
+  public scale_back_int16(value: number, min: number, max: number): number {
     if (min === max) { return min; } // Prevent division by zero
     return (value / 65535) * (max - min) + min;
   }
@@ -562,9 +562,9 @@ export default class RosbridgePlayer implements Player {
 		  const y: number = rview.getUint16(offset+2, true);
 		  const z: number = rview.getUint16(offset+4, true);
 
-		  pointsFloat32[i * 3] = this.scaleBackArray(x, xmin, xmax);
-		  pointsFloat32[i * 3 + 1] = this.scaleBackArray(y, ymin, ymax);
-		  pointsFloat32[i * 3 + 2] = this.scaleBackArray(z, zmin, zmax);
+		  pointsFloat32[i * 3] = this.scale_back_int16(x, xmin, xmax);
+		  pointsFloat32[i * 3 + 1] = this.scale_back_int16(y, ymin, ymax);
+		  pointsFloat32[i * 3 + 2] = this.scale_back_int16(z, zmin, zmax);
 	  }
 
 	  const buffer = pointsFloat32.buffer;
