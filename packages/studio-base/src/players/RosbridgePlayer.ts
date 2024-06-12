@@ -17,7 +17,7 @@ import * as _ from "lodash-es";
 import { v4 as uuidv4 } from "uuid";
 
 import { debouncePromise } from "@foxglove/den/async";
-import { filterMap } from "@foxglove/den/collection";
+// import { filterMap } from "@foxglove/den/collection";
 import Log from "@foxglove/log";
 import roslib from "@foxglove/roslibjs";
 import { parse as parseMessageDefinition } from "@foxglove/rosmsg";
@@ -47,6 +47,7 @@ const log = Log.getLogger(__dirname);
 
 const CAPABILITIES = [PlayerCapabilities.advertise, PlayerCapabilities.callServices];
 
+/*
 type RosNodeDetails = Record<
   "subscriptions" | "publications" | "services",
   { node: string; values: string[] }
@@ -70,16 +71,18 @@ function collateNodeDetails(
     new Map<string, Set<string>>(),
   );
 }
+*/
 
 function isClockMessage(topic: string, msg: unknown): msg is { clock: Time } {
   const maybeClockMsg = msg as { clock?: Time };
   return topic === "/clock" && maybeClockMsg.clock != undefined && !isNaN(maybeClockMsg.clock.sec);
 }
 
+/*
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value != undefined;
 }
-
+*/
 
 interface TypeIndex {
     [type: string]: string | undefined;
@@ -707,6 +710,7 @@ export default class RosbridgePlayer implements Player {
   }
 
   public setPublishers(publishers: AdvertiseOptions[]): void {
+    publishers;
     // Since `setPublishers` is rarely called, we can get away with just throwing away the old
     // Roslib.Topic objects and creating new ones.
     /* TODO
@@ -722,10 +726,19 @@ export default class RosbridgePlayer implements Player {
 
   public setParameter(_key: string, _value: ParameterValue): void {
     /* TODO */
+	// Call unused variables to prevent Linting errors
+	this.#topicPublishers;
+	this.#advertisements;
+	this.#serviceTypeCache;
+	this.#getServiceType;
+	this.#refreshSystemState;
+
     throw new Error("Parameter editing is not supported by the Rosbridge connection");
   }
 
   public publish({ topic, msg }: PublishPayload): void {
+    topic;
+	msg;
     /* TODO
     const publisher = this.#topicPublishers.get(topic);
     if (!publisher) {
@@ -744,6 +757,7 @@ export default class RosbridgePlayer implements Player {
 
   // Query the type name for this service. Cache the query to avoid looking it up again.
   async #getServiceType(service: string): Promise<string> {
+    service;
     /* (Roslibjs specific)
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -767,6 +781,8 @@ export default class RosbridgePlayer implements Player {
   }
 
   public async callService(service: string, request: unknown): Promise<unknown> {
+    request;
+	service;
     /* TODO
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -859,10 +875,12 @@ export default class RosbridgePlayer implements Player {
   // Refreshes the full system state graph. Runs in the background so we don't
   // block app startup while mapping large node graphs.
   async #refreshSystemState(): Promise<void> {
-    /*
     if (this.#isRefreshing) {
 	  return;
+	}
+	return;
 
+    /*
       const promises = nodes.map(async (node) => {
         return await new Promise<RosNodeDetails>((resolve, reject) => {
           this.#rosClient?.getNodeDetails(
@@ -898,7 +916,6 @@ export default class RosbridgePlayer implements Player {
       this.#isRefreshing = false;
     }
     */
-    return;
   }
 }
 
@@ -959,19 +976,4 @@ function decodeBase64Png(base64String: string): Promise<Uint8Array> {
             reject(error);
         };
     });
-}
-
-function base64ToUint8Array(base64String: string): Uint8Array {
-    // Decode the Base64 string to a binary string
-    const binaryString = atob(base64String);
-
-    // Create a Uint8Array from the binary string
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    return bytes;
 }
