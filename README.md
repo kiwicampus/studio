@@ -123,3 +123,5 @@ Note: All contributors must agree to our [Contributor License Agreement](https:/
 ## Credits
 
 Foxglove Studio originally began as a fork of [Webviz](https://github.com/cruise-automation/webviz), an open source project developed by [Cruise](https://getcruise.com/). Most of the Webviz code has been rewritten, but some files still carry a Cruise license header where appropriate.
+
+## Connecting to Rosboard
