@@ -44,9 +44,9 @@ export function WebRoot(props: {
     const sources = [
       new Ros1LocalBagDataSourceFactory(),
       new Ros2LocalBagDataSourceFactory(),
+      new RosboardDataSourceFactory(),
       new FoxgloveWebSocketDataSourceFactory(),
       new RosbridgeDataSourceFactory(),
-      new RosboardDataSourceFactory(),
       new UlogLocalDataSourceFactory(),
       new SampleNuscenesDataSourceFactory(),
       new McapLocalDataSourceFactory(),
