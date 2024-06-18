@@ -159,9 +159,9 @@ export default class RosboardPlayer implements Player {
       return;
     }
     if (this.#rosClient != undefined) {
-      throw new Error(`Attempted to open a second Rosbridge connection`);
+      throw new Error(`Attempted to open a second Rosboard connection`);
     }
-    this.#problems.removeProblem("rosbridge:connection-failed");
+    this.#problems.removeProblem("rosboard:connection-failed");
     log.info(`Opening connection to ${this.#url}`);
 
     /* Old rosClient definition using roslibjs */
@@ -188,7 +188,7 @@ export default class RosboardPlayer implements Player {
         return;
       }
       this.#presence = PlayerPresence.PRESENT;
-      this.#problems.removeProblem("rosbridge:connection-failed");
+      this.#problems.removeProblem("rosboard:connection-failed");
       this.#rosClient = rosClient;
 
       this.#setupPublishers();
@@ -197,9 +197,9 @@ export default class RosboardPlayer implements Player {
 
     rosClient.on("error", (err) => {
       if (err) {
-        this.#problems.addProblem("rosbridge:error", {
+        this.#problems.addProblem("rosboard:error", {
           severity: "warn",
-          message: "Rosbridge error",
+          message: "Rosboard error",
           error: err,
         });
         this.#emitState();
@@ -222,7 +222,7 @@ export default class RosboardPlayer implements Player {
       rosClient.close(); // ensure the underlying worker is cleaned up
       this.#rosClient = undefined;
 
-      this.#problems.addProblem("rosbridge:connection-failed", {
+      this.#problems.addProblem("rosboard:connection-failed", {
         severity: "error",
         message: "Connection failed",
         tip: `Check that the rosboard WebSocket server at ${this.#url} is reachable.`,
@@ -348,7 +348,7 @@ export default class RosboardPlayer implements Player {
 
       this.#problems.addProblem("requestTopics:error", {
         severity: "error",
-        message: "Failed to fetch topics from rosbridge",
+        message: "Failed to fetch topics from rosboard",
         error,
       });
     } finally {
@@ -732,7 +732,7 @@ export default class RosboardPlayer implements Player {
     this.#getServiceType;
     this.#refreshSystemState;
 
-    throw new Error("Parameter editing is not supported by the Rosbridge connection");
+    throw new Error("Parameter editing is not supported by the Rosboard connection");
   }
 
   public publish({ topic, msg }: PublishPayload): void {
@@ -908,7 +908,7 @@ export default class RosboardPlayer implements Player {
     } catch (error) {
       this.#problems.addProblem("requestTopics:system-state", {
         severity: "error",
-        message: "Failed to fetch node details from rosbridge",
+        message: "Failed to fetch node details from rosboard",
         error,
       });
     } finally {
