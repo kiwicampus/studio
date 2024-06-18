@@ -11,8 +11,6 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import RosboardClient from './rosboardClient';
-
 import * as _ from "lodash-es";
 import { v4 as uuidv4 } from "uuid";
 
@@ -42,6 +40,8 @@ import {
 } from "@foxglove/studio-base/players/types";
 import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
 import { bagConnectionsToDatatypes } from "@foxglove/studio-base/util/bagConnectionsHelper";
+
+import RosboardClient from "./rosboardClient";
 
 const log = Log.getLogger(__dirname);
 
@@ -85,11 +85,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 */
 
 interface TypeIndex {
-    [type: string]: string | undefined;
+  [type: string]: string | undefined;
 }
-
-
-
 
 // Connects to `rosbridge_server` instance using `roslibjs`. Currently doesn't support seeking or
 // showing simulated time, so current time from Date.now() is always used instead. Also doesn't yet
@@ -97,7 +94,6 @@ interface TypeIndex {
 // unmarshalls into plain JS objects.
 export default class RosboardPlayer implements Player {
   #url: string; // WebSocket URL.
-
 
   #typeIndex: TypeIndex = {};
 
@@ -168,19 +164,19 @@ export default class RosboardPlayer implements Player {
     this.#problems.removeProblem("rosbridge:connection-failed");
     log.info(`Opening connection to ${this.#url}`);
 
-	/* Old rosClient definition using roslibjs */
+    /* Old rosClient definition using roslibjs */
     // `workersocket` will open the actual WebSocket connection in a WebWorker.
     // const rosClient = new roslib.Ros({ url: this.#url, transportLibrary: "workersocket" });
     const rosClient = new RosboardClient({ url: this.#url });
 
     // Load data.json synchronously using require
-    const data = require('./data.json');
+    const data = require("./data.json");
 
     // Process data from JSON file
     const { values } = data; // Destructure values from the loaded JSON
     const typeIndex: TypeIndex = {};
     values.types.forEach((type: string, index: number) => {
-        typeIndex[type] = values.typedefs_full_text[index];
+      typeIndex[type] = values.typedefs_full_text[index];
     });
 
     // Assign typeIndex to this.#typeIndex
@@ -218,9 +214,9 @@ export default class RosboardPlayer implements Player {
       }
       for (const topicName of this.#topicSubscriptions) {
         // topic.unsubscribe();
-	if (this.#rosClient !== undefined) {
-	    this.#rosClient.unsubscribe(topicName);
-	}
+        if (this.#rosClient !== undefined) {
+          this.#rosClient.unsubscribe(topicName);
+        }
         this.#topicSubscriptions.delete(topicName);
       }
       rosClient.close(); // ensure the underlying worker is cleaned up
@@ -229,7 +225,7 @@ export default class RosboardPlayer implements Player {
       this.#problems.addProblem("rosbridge:connection-failed", {
         severity: "error",
         message: "Connection failed",
-        tip: `Check that the rosbridge WebSocket server at ${this.#url} is reachable.`,
+        tip: `Check that the rosboard WebSocket server at ${this.#url} is reachable.`,
       });
 
       this.#emitState();
@@ -274,11 +270,10 @@ export default class RosboardPlayer implements Player {
 
     try {
       const result: { [topicName: string]: string } = await new Promise((resolve, reject) => {
-          rosClient.getAvailableTopics().then(resolve).catch(reject);
+        rosClient.getAvailableTopics().then(resolve).catch(reject);
       });
 
       clearTimeout(topicsStallWarningTimeout);
-
 
       this.#problems.removeProblem("topicsAndRawTypesTimeout");
 
@@ -289,8 +284,8 @@ export default class RosboardPlayer implements Player {
 
       this.#rosVersion = 2;
 
-      for ( const [topicName, type] of Object.entries(result) ) {
-	    const messageDefinition = this.#typeIndex[type];
+      for (const [topicName, type] of Object.entries(result)) {
+        const messageDefinition = this.#typeIndex[type];
 
         if (type == undefined || messageDefinition == undefined) {
           topics.push({ name: topicName + "(ERROR)", schemaName: type });
@@ -346,7 +341,6 @@ export default class RosboardPlayer implements Player {
 
       // Try subscribing again, since we might now be able to subscribe to some new topics.
       this.setSubscriptions(this.#requestedSubscriptions);
-
     } catch (error) {
       log.error(error);
       clearTimeout(topicsStallWarningTimeout);
@@ -445,7 +439,9 @@ export default class RosboardPlayer implements Player {
   }
 
   public scaleBackInt16(value: number, min: number, max: number): number {
-    if (min === max) return min; // Prevent division by zero
+    if (min === max) {
+      return min;
+    } // Prevent division by zero
     return (value / 65535) * (max - min) + min;
   }
 
@@ -461,128 +457,134 @@ export default class RosboardPlayer implements Player {
   }
 
   public _base64decode(base64: string) {
-    var binary_string = window.atob(base64);
-    var len = binary_string.length;
-    var bytes = new Uint8Array(len);
-    for (var i = 0; i < len; i++) {
-        bytes[i] = binary_string.charCodeAt(i);
+    const binary_string = window.atob(base64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary_string.charCodeAt(i);
     }
     return bytes.buffer;
   }
 
-  public decodeLaserScanMsg (message: any): void {
-	  let rbounds = message._ranges_uint16.bounds;
+  public decodeLaserScanMsg(message: any): void {
+    const rbounds = message._ranges_uint16.bounds;
 
-	  let rdata = this._base64decode(message._ranges_uint16.points);
+    const rdata = this._base64decode(message._ranges_uint16.points);
 
-	  let rview = new DataView(rdata);
-	  let num_ranges = rdata.byteLength / 2;
-	  let points = new Float32Array(num_ranges);
+    const rview = new DataView(rdata);
+    const num_ranges = rdata.byteLength / 2;
+    const points = new Float32Array(num_ranges);
 
-	  let rrange = rbounds[1] - rbounds[0];
-	  let rmin = rbounds[0];
+    const rrange = rbounds[1] - rbounds[0];
+    const rmin = rbounds[0];
 
-	  for(let i=0; i<num_ranges; i++) {
-		  let offset = i * 2;
+    for (let i = 0; i < num_ranges; i++) {
+      const offset = i * 2;
 
-		  let r_uint16 = rview.getUint16(offset, true);
+      const r_uint16 = rview.getUint16(offset, true);
 
-		  if(r_uint16 === 65535) {
-			  points[i] = NaN;
-			  continue; // nan, -inf, inf mapped to 65535
-		  }
+      if (r_uint16 === 65535) {
+        points[i] = NaN;
+        continue; // nan, -inf, inf mapped to 65535
+      }
 
-		  let r = r_uint16 / 65534 * rrange + rmin;
-		  points[i] = r;
-	  }
-	  message.ranges = points;
-	  message.intensities = points;
+      const r = (r_uint16 / 65534) * rrange + rmin;
+      points[i] = r;
+    }
+    message.ranges = points;
+    message.intensities = points;
   }
 
-  public decodeImageMsg (message: any): void {
-	  let rdata = message._data_jpeg;
+  public decodeImageMsg(message: any): void {
+    const rdata = message._data_jpeg;
 
-	  if ( this.#cachedImage != undefined )
-		  message.data = this.#cachedImage;
+    if (this.#cachedImage != undefined) {
+      message.data = this.#cachedImage;
+    }
 
-	  // Decode the base64 JPEG to pixel data
-	  decodeBase64Jpeg(rdata)
-	  .then((pixelData) => {
-		  // Assign the decoded RGB pixel data to message.data
-		  message.data = pixelData; // Uint8Array
-		  this.#cachedImage = pixelData;
-	  })
-	  .catch((error) => {
-		  console.error('Error decoding image:', error);
-	  });
+    // Decode the base64 JPEG to pixel data
+    decodeBase64Jpeg(rdata)
+      .then((pixelData) => {
+        // Assign the decoded RGB pixel data to message.data
+        message.data = pixelData; // Uint8Array
+        this.#cachedImage = pixelData;
+      })
+      .catch((error) => {
+        console.error("Error decoding image:", error);
+      });
   }
 
-  public decodeOccupancyGridMsg (message: any): void {
-	  let rdata = message._data_jpeg;
+  public decodeOccupancyGridMsg(message: any): void {
+    const rdata = message._data_jpeg;
 
-	  if ( this.#cachedGrid != undefined )
-		  message.data = this.#cachedGrid;
+    if (this.#cachedGrid != undefined) {
+      message.data = this.#cachedGrid;
+    }
 
-	  // Decode the base64 JPEG to pixel data
-	  decodeBase64Png(rdata)
-	  .then((pixelData) => {
-		  // Assign the decoded RGB pixel data to message.data
-		  const decodedA = new Int8Array(pixelData); // Uint8Array
+    // Decode the base64 JPEG to pixel data
+    decodeBase64Png(rdata)
+      .then((pixelData) => {
+        // Assign the decoded RGB pixel data to message.data
+        const decodedA = new Int8Array(pixelData); // Uint8Array
 
-		  const sumsArray = [];
-		  let alen = decodedA.length;
-		  if (decodedA != undefined) {
-			  // Transform RGB to grayscale using luminocity method coefficients
-			  for (let i=0; i < alen; i+=3) {
-				  sumsArray.push( 0.3 * (decodedA[i] || 0)
-								 + 0.59 * (decodedA[i+1] || 0)
-								 + 0.11 * (decodedA[i+2] || 0) );
-			  }
-			  this.#cachedGrid = new Int8Array( sumsArray );
-			  message.data = this.#cachedGrid;
-		  }
-
-	  })
-	  .catch((error) => {
-		  console.error('Error decoding image:', error);
-	  });
+        const sumsArray = [];
+        const alen = decodedA.length;
+        if (decodedA != undefined) {
+          // Transform RGB to grayscale using luminocity method coefficients
+          for (let i = 0; i < alen; i += 3) {
+            sumsArray.push(
+              0.3 * (decodedA[i] || 0) +
+                0.59 * (decodedA[i + 1] || 0) +
+                0.11 * (decodedA[i + 2] || 0),
+            );
+          }
+          this.#cachedGrid = new Int8Array(sumsArray);
+          message.data = this.#cachedGrid;
+        }
+      })
+      .catch((error) => {
+        console.error("Error decoding image:", error);
+      });
   }
 
-  public decodePointCloud2Msg (message: any): void {
-	  let rdata = this._base64decode(message._data_uint16.points)
-	  let rview = new DataView(rdata);
+  public decodePointCloud2Msg(message: any): void {
+    const rdata = this._base64decode(message._data_uint16.points);
+    const rview = new DataView(rdata);
 
-	  let num_ranges = rdata.byteLength / 6;
+    const num_ranges = rdata.byteLength / 6;
 
-	  const bounds: number[] = message._data_uint16.bounds;
+    const bounds: number[] = message._data_uint16.bounds;
 
-	  const xmin: number = bounds[0] || 0, xmax: number = bounds[1] || 0;
-	  const ymin: number = bounds[2] || 0, ymax: number = bounds[3] || 0;
-	  const zmin: number = bounds[4] || 0, zmax: number = bounds[5] || 0;
+    const xmin: number = bounds[0] || 0,
+      xmax: number = bounds[1] || 0;
+    const ymin: number = bounds[2] || 0,
+      ymax: number = bounds[3] || 0;
+    const zmin: number = bounds[4] || 0,
+      zmax: number = bounds[5] || 0;
 
-	  const pointsFloat32: Float32Array = new Float32Array(num_ranges*3);
+    const pointsFloat32: Float32Array = new Float32Array(num_ranges * 3);
 
-	  for (let i: number = 0; i < num_ranges; i++) {
-		  let offset = i * 6;
-		  const x: number = rview.getUint16(offset, true);
-		  const y: number = rview.getUint16(offset+2, true);
-		  const z: number = rview.getUint16(offset+4, true);
+    for (let i: number = 0; i < num_ranges; i++) {
+      const offset = i * 6;
+      const x: number = rview.getUint16(offset, true);
+      const y: number = rview.getUint16(offset + 2, true);
+      const z: number = rview.getUint16(offset + 4, true);
 
-		  pointsFloat32[i * 3] = this.scaleBackInt16(x, xmin, xmax);
-		  pointsFloat32[i * 3 + 1] = this.scaleBackInt16(y, ymin, ymax);
-		  pointsFloat32[i * 3 + 2] = this.scaleBackInt16(z, zmin, zmax);
-	  }
+      pointsFloat32[i * 3] = this.scaleBackInt16(x, xmin, xmax);
+      pointsFloat32[i * 3 + 1] = this.scaleBackInt16(y, ymin, ymax);
+      pointsFloat32[i * 3 + 2] = this.scaleBackInt16(z, zmin, zmax);
+    }
 
-	  const buffer = pointsFloat32.buffer;
-	  const points: Uint8Array = new Uint8Array(buffer);
+    const buffer = pointsFloat32.buffer;
+    const points: Uint8Array = new Uint8Array(buffer);
 
-	  // Adjust the dimentions to fit for 1D (unordered clouds)
-	  message.width = pointsFloat32.length/3;
-	  message.height = 1;
-	  message.point_step = 12;
-	  message.row_step = message.width * message.point_step;
+    // Adjust the dimentions to fit for 1D (unordered clouds)
+    message.width = pointsFloat32.length / 3;
+    message.height = 1;
+    message.point_step = 12;
+    message.row_step = message.width * message.point_step;
 
-	  message.data = points;
+    message.data = points;
   }
 
   public setSubscriptions(subscriptions: SubscribePayload[]): void {
@@ -630,17 +632,14 @@ export default class RosboardPlayer implements Player {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
           // const innerMessage = messageReader.readMessage(bytes);
-          if ( message._topic_type === 'sensor_msgs/msg/LaserScan' ) {
-			  this.decodeLaserScanMsg(message);
-          }
-          else if ( message._topic_type === 'sensor_msgs/msg/Image' ) {
-			  this.decodeImageMsg(message);
-          }
-          else if ( message._topic_type === 'nav_msgs/msg/OccupancyGrid' ) {
-			  this.decodeOccupancyGridMsg(message)
-          }
-          else if ( message._topic_type === 'sensor_msgs/msg/PointCloud2' ) {
-			  this.decodePointCloud2Msg(message)
+          if (message._topic_type === "sensor_msgs/msg/LaserScan") {
+            this.decodeLaserScanMsg(message);
+          } else if (message._topic_type === "sensor_msgs/msg/Image") {
+            this.decodeImageMsg(message);
+          } else if (message._topic_type === "nav_msgs/msg/OccupancyGrid") {
+            this.decodeOccupancyGridMsg(message);
+          } else if (message._topic_type === "sensor_msgs/msg/PointCloud2") {
+            this.decodePointCloud2Msg(message);
           }
 
           const innerMessage = message;
@@ -696,10 +695,10 @@ export default class RosboardPlayer implements Player {
 
     // Unsubscribe from topics that we are subscribed to but shouldnt be.
     // for (const [topicName, topic] of this.#topicSubscriptions) {
-    for ( const topicName of this.#topicSubscriptions ) {
+    for (const topicName of this.#topicSubscriptions) {
       if (!topicNames.includes(topicName)) {
         // topic.unsubscribe();
-	this.#rosClient.unsubscribe(topicName);
+        this.#rosClient.unsubscribe(topicName);
 
         this.#topicSubscriptions.delete(topicName);
 
@@ -726,19 +725,19 @@ export default class RosboardPlayer implements Player {
 
   public setParameter(_key: string, _value: ParameterValue): void {
     /* TODO */
-	// Call unused variables to prevent Linting errors
-	this.#topicPublishers;
-	this.#advertisements;
-	this.#serviceTypeCache;
-	this.#getServiceType;
-	this.#refreshSystemState;
+    // Call unused variables to prevent Linting errors
+    this.#topicPublishers;
+    this.#advertisements;
+    this.#serviceTypeCache;
+    this.#getServiceType;
+    this.#refreshSystemState;
 
     throw new Error("Parameter editing is not supported by the Rosbridge connection");
   }
 
   public publish({ topic, msg }: PublishPayload): void {
     topic;
-	msg;
+    msg;
     /* TODO
     const publisher = this.#topicPublishers.get(topic);
     if (!publisher) {
@@ -782,7 +781,7 @@ export default class RosboardPlayer implements Player {
 
   public async callService(service: string, request: unknown): Promise<unknown> {
     request;
-	service;
+    service;
     /* TODO
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -876,9 +875,9 @@ export default class RosboardPlayer implements Player {
   // block app startup while mapping large node graphs.
   async #refreshSystemState(): Promise<void> {
     if (this.#isRefreshing) {
-	  return;
-	}
-	return;
+      return;
+    }
+    return;
 
     /*
       const promises = nodes.map(async (node) => {
@@ -919,61 +918,61 @@ export default class RosboardPlayer implements Player {
   }
 }
 
-function decodeBase64Jpeg(base64String: string): Promise<Uint8Array> {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                reject(new Error('Could not get 2D context'));
-                return;
-            }
-            console.log ( img.width );
-            canvas.width = img.width || 0; // Ensure width is defined or default to 0
-            canvas.height = img.height || 0; // Ensure height is defined or default to 0
-            ctx.drawImage(img, 0, 0);
-            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
-            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-                rgbData[j] = data[i] || 0;
-                rgbData[j + 1] = data[i + 1] || 0;
-                rgbData[j + 2] = data[i + 2] || 0;
-            }
-            resolve(rgbData);
-        };
-        img.src = `data:image/jpeg;base64,${base64String}`;
-        img.onerror = (error) => {
-            reject(error);
-        };
-    });
+async function decodeBase64Jpeg(base64String: string): Promise<Uint8Array> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get 2D context"));
+        return;
+      }
+      console.log(img.width);
+      canvas.width = img.width || 0; // Ensure width is defined or default to 0
+      canvas.height = img.height || 0; // Ensure height is defined or default to 0
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
+      for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+        rgbData[j] = data[i] || 0;
+        rgbData[j + 1] = data[i + 1] || 0;
+        rgbData[j + 2] = data[i + 2] || 0;
+      }
+      resolve(rgbData);
+    };
+    img.src = `data:image/jpeg;base64,${base64String}`;
+    img.onerror = (error) => {
+      reject(error);
+    };
+  });
 }
 
-function decodeBase64Png(base64String: string): Promise<Uint8Array> {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                reject(new Error('Could not get 2D context'));
-                return;
-            }
-            canvas.width = img.width || 0; // Ensure width is defined or default to 0
-            canvas.height = img.height || 0; // Ensure height is defined or default to 0
-            ctx.drawImage(img, 0, 0);
-            const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-            const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
-            for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-                rgbData[j] = data[i] || 0;
-                rgbData[j + 1] = data[i + 1] || 0;
-                rgbData[j + 2] = data[i + 2] || 0;
-            }
-            resolve(rgbData);
-        };
-        img.src = `data:image/png;base64,${base64String}`;
-        img.onerror = (error) => {
-            reject(error);
-        };
-    });
+async function decodeBase64Png(base64String: string): Promise<Uint8Array> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not get 2D context"));
+        return;
+      }
+      canvas.width = img.width || 0; // Ensure width is defined or default to 0
+      canvas.height = img.height || 0; // Ensure height is defined or default to 0
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
+      for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+        rgbData[j] = data[i] || 0;
+        rgbData[j + 1] = data[i + 1] || 0;
+        rgbData[j + 2] = data[i + 2] || 0;
+      }
+      resolve(rgbData);
+    };
+    img.src = `data:image/png;base64,${base64String}`;
+    img.onerror = (error) => {
+      reject(error);
+    };
+  });
 }
