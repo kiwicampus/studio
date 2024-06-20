@@ -30,6 +30,7 @@ export default class RosboardClient {
 	url: string;
 	private _availableTopics: Topic = {};
 	private _topicsFull: TypeIndex = {};
+	private _topicsFullRequested: boolean = false;
 	sequenceNumber: number | null = null;
 	connectionCallbacks: EventCallback[] = [];
 	errorCallback?: (error: Error) => void;
@@ -122,6 +123,7 @@ export default class RosboardClient {
 						typedefs[payload[k].type] = payload[k].typedef;
 					})
 					this._topicsFull = typedefs;
+					this._topicsFullRequested = false;
 				} else if (type === 'm' && typeof payload === 'object' && payload._topic_name && this.subscribedTopics.includes(payload._topic_name)) {
 					// Message received for a subscribed topic
 					const topicName = payload._topic_name;
@@ -167,9 +169,13 @@ export default class RosboardClient {
 	}
 
 	requestTopicsFull(): void {
+		if (this._topicsFullRequested) {
+			return;
+		}
 		const message = JSON.stringify(['f']);
 		if (message !== undefined) {
 			this.send(message);
+			this._topicsFullRequested = true;
 		} else {
 			console.error("Message is undefined. Cannot send.");
 		}
