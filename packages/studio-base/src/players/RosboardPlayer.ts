@@ -173,19 +173,6 @@ export default class RosboardPlayer implements Player {
     // const rosClient = new roslib.Ros({ url: this.#url, transportLibrary: "workersocket" });
     const rosClient = new RosboardClient({ url: this.#url });
 
-    // Load data.json synchronously using require
-    const data = require('./data.json');
-
-    // Process data from JSON file
-    const { values } = data; // Destructure values from the loaded JSON
-    const typeIndex: TypeIndex = {};
-    values.types.forEach((type: string, index: number) => {
-        typeIndex[type] = values.typedefs_full_text[index];
-    });
-
-    // Assign typeIndex to this.#typeIndex
-    Object.assign(this.#typeIndex, typeIndex);
-
     rosClient.on("connection", () => {
       log.info(`Connected to ${this.#url}`);
       if (this.#closed) {
@@ -273,12 +260,14 @@ export default class RosboardPlayer implements Player {
     }, 5000);
 
     try {
-      const result: { [topicName: string]: string } = await new Promise((resolve, reject) => {
-          rosClient.getAvailableTopics().then(resolve).catch(reject);
-      });
+	  const result = rosClient.availableTopics;
+
+	  if (this.#typeIndex == undefined) {
+		  rosClient.requestTopicsFull();
+	  }
+	  this.#typeIndex = rosClient.topicsFull;
 
       clearTimeout(topicsStallWarningTimeout);
-
 
       this.#problems.removeProblem("topicsAndRawTypesTimeout");
 
@@ -293,7 +282,7 @@ export default class RosboardPlayer implements Player {
 	    const messageDefinition = this.#typeIndex[type];
 
         if (type == undefined || messageDefinition == undefined) {
-          topics.push({ name: topicName + "(ERROR)", schemaName: type });
+          topics.push({ name: topicName + " (UNDEFINED DATATYPE)", schemaName: type });
           topicsMissingDatatypes.push(topicName);
           continue;
         }
@@ -310,6 +299,10 @@ export default class RosboardPlayer implements Player {
               : new ROS2MessageReader(parsedDefinition);
         }
       }
+
+	  if (topicsMissingDatatypes.length > 0) {
+		  rosClient.requestTopicsFull();
+	  }
 
       // We call requestTopics on a timeout to check for new topics. If there are no changes to topics
       // we want to bail and avoid updating readers, subscribers, etc.

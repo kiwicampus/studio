@@ -2,6 +2,10 @@ interface Topic {
 	[name: string]: string;
 }
 
+interface TypeIndex {
+    [type: string]: string | undefined;
+}
+
 interface SubscribePayload {
 	topicName: string;
 	maxUpdateRate: number;
@@ -25,6 +29,7 @@ export default class RosboardClient {
 	closed: boolean = false;
 	url: string;
 	private _availableTopics: Topic = {};
+	private _topicsFull: TypeIndex = {};
 	sequenceNumber: number | null = null;
 	connectionCallbacks: EventCallback[] = [];
 	errorCallback?: (error: Error) => void;
@@ -46,7 +51,6 @@ export default class RosboardClient {
 			throw new Error(`Attempted to open a second WebSocket Connection`);
 		}
 
-		console.log("connection stablished");
 		const ws = new WebSocket(this.url);
 
 		ws.addEventListener('open', () => {
@@ -63,7 +67,6 @@ export default class RosboardClient {
 		});
 
 		ws.addEventListener('close', () => {
-			console.log('WebSocket connection closed');
 			this.ws = undefined;
 			this.closed = true;
 			if (this.closeCallback) {
@@ -73,7 +76,6 @@ export default class RosboardClient {
 
 		ws.addEventListener('message', async (event) => {
 
-			console.log ("MESSAGE");
 			try {
 				let data: [string, any];
 				if (typeof event.data === 'string') {
@@ -100,8 +102,8 @@ export default class RosboardClient {
 					data = JSON.parse(result) as [string, any];
 				} else {
 					data = ["z", "invalid"];
-					console.log("Invalid input");
-					console.log(typeof(data));
+					//console.log("Invalid input");
+					//console.log(typeof(data));
 				}
 				const [type, payload] = data;
 
@@ -109,12 +111,17 @@ export default class RosboardClient {
 					this.hostname = payload.hostname;
 					this.version = payload.version;
 
-					console.log('Hostname:', this.hostname);
-					console.log('Version:', this.version);
 				} else if (type === 't' && typeof payload === 'object') {
 					// Update availableTopics directly with the new payload
 					this._availableTopics = payload;
-					// console.log('Updated Available Topics:', this._availableTopics);
+					//console.log('Updated Available Topics:', this._availableTopics);
+				} else if (type === 'f' && typeof payload === 'object') {
+					// Update availableTopics directly with the new payload
+					let typedefs: TypeIndex = {};
+					Object.keys(payload).forEach((k) => {
+						typedefs[payload[k].type] = payload[k].typedef;
+					})
+					this._topicsFull = typedefs;
 				} else if (type === 'm' && typeof payload === 'object' && payload._topic_name && this.subscribedTopics.includes(payload._topic_name)) {
 					// Message received for a subscribed topic
 					const topicName = payload._topic_name;
@@ -132,7 +139,7 @@ export default class RosboardClient {
 					const response = JSON.stringify(['q', { s: sequenceNumber, t: timestamp }]);
 					if (this.ws && response) {
 						this.ws.send(response);
-						// console.log('Sent response:', response);
+						//console.log('Sent response:', response);
 					}
 				} 
 			} catch (error) {
@@ -155,60 +162,17 @@ export default class RosboardClient {
 		return this._availableTopics;
 	}
 
-	getAvailableTopics(): Promise<Topic> {
-		return new Promise((resolve, reject) => {
-			const requestMessage = JSON.stringify(['get_available_topics']);
-			if (requestMessage !== undefined) {
-				this.send(requestMessage);
-			} else {
-				reject(new Error("Failed to stringify request message."));
-			}
+	get topicsFull(): TypeIndex {
+		return this._topicsFull;
+	}
 
-			const onResponse = (data: string | any[]) => {
-				try {
-					let jsonData: any;
-					if (typeof data === 'string') {
-						jsonData = JSON.parse(data);
-					} else if (Array.isArray(data)) {
-						jsonData = data;
-					} else {
-						reject(new Error('Unexpected data type received'));
-						return;
-					}
-
-					const [type, payload] = jsonData;
-					if (type === 't' && typeof payload === 'object') {
-						resolve(payload);
-					} else {
-						reject(new Error('Invalid response from server'));
-					}
-				} catch (error) {
-					reject(error);
-				}
-			};
-
-			const onResponseBound = onResponse.bind(this);
-
-			// Listen for response messages until we receive the available topics
-			const messageListener = (event: MessageEvent) => {
-				if (event.data instanceof Blob) {
-					const reader = new FileReader();
-					reader.onload = () => {
-						const text = reader.result as string;
-						onResponseBound(text);
-						this.ws?.removeEventListener('message', messageListener);
-					};
-					reader.onerror = (error) => {
-						reject(new Error('Error reading Blob data: ' + error));
-					};
-					reader.readAsText(event.data);
-				} else {
-					onResponseBound(event.data);
-					this.ws?.removeEventListener('message', messageListener);
-				}
-			};
-			this.ws?.addEventListener('message', messageListener);
-		});
+	requestTopicsFull(): void {
+		const message = JSON.stringify(['f']);
+		if (message !== undefined) {
+			this.send(message);
+		} else {
+			console.error("Message is undefined. Cannot send.");
+		}
 	}
 
 	subscribe(topicName: string, maxUpdateRate: number): void {
@@ -217,8 +181,8 @@ export default class RosboardClient {
 			maxUpdateRate
 		};
 		const message = JSON.stringify(['s', payload]);
-		// console.log(message);
-		console.log ("Subscribing to ", topicName);
+		//console.log(message);
+		//console.log ("Subscribing to ", topicName);
 		if (message !== undefined) {
 			this.send(message);
 		} else {
@@ -232,7 +196,7 @@ export default class RosboardClient {
 			topicName
 		};
 		const message = JSON.stringify(['u', payload]);
-		console.log ("Un-Subscribing to ", topicName);
+		//console.log ("Un-Subscribing to ", topicName);
 		if (message !== undefined) {
 			this.send(message);
 		} else {
@@ -253,7 +217,7 @@ export default class RosboardClient {
 	private send(message: string): void {
 		if (this.ws) {
 			this.ws.send(message);
-			// console.log('Sent message:', message);
+			//console.log('Sent message:', message);
 		} else {
 			console.error('WebSocket connection is not established');
 		}
@@ -264,7 +228,7 @@ export default class RosboardClient {
 			this.ws.close();
 			this.ws = undefined;
 			this.closed = true;
-			console.log('WebSocket connection closed');
+			//console.log('WebSocket connection closed');
 		} else {
 			console.warn('WebSocket connection is already closed');
 		}
