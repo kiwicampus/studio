@@ -450,6 +450,8 @@ export default class RosboardPlayer implements Player {
     }
   }
 
+  // Rosboard features some compressed messages to come also decoded 
+  // in base64
   public _base64decode(base64: string) {
     const binary_string = window.atob(base64);
     const len = binary_string.length;
@@ -460,6 +462,8 @@ export default class RosboardPlayer implements Player {
     return bytes.buffer;
   }
 
+  // In rosboard, laser scan messages come scaled into uint16 values
+  // and use _ranges_uint16.bounds to scale them back to Float32 renderable format
   public decodeLaserScanMsg(message: any): void {
     const rbounds = message._ranges_uint16.bounds;
 
@@ -489,6 +493,8 @@ export default class RosboardPlayer implements Player {
     message.intensities = points;
   }
 
+  // Images come in regular base64-encoded jpeg data which
+  // is decoded into it's raw format for visualization
   public decodeImageMsg(message: any): void {
     const rdata = message._data_jpeg;
 
@@ -508,6 +514,9 @@ export default class RosboardPlayer implements Player {
       });
   }
 
+  // Occupancy grid messages come in regular base64 png format
+  // In contrast with decodeImageMsg, the raw rgb data must be merged
+  // into a single channel gray-scaled data
   public decodeOccupancyGridMsg(message: any): void {
     const rdata = message._data_jpeg;
 
@@ -515,7 +524,7 @@ export default class RosboardPlayer implements Player {
       message.data = this.#cachedGrid;
     }
 
-    // Decode the base64 JPEG to pixel data
+    // Decode the base64 PNG to pixel data
     decodeBase64Png(rdata)
       .then((pixelData) => {
         // Assign the decoded RGB pixel data to message.data
@@ -524,11 +533,11 @@ export default class RosboardPlayer implements Player {
         const sumsArray = [];
         const alen = decodedA.length;
         if (decodedA != undefined) {
-          // Transform RGB to grayscale using luminocity method coefficients
+    	  // Transform RGB to grayscale using luminocity method coefficients
           for (let i = 0; i < alen; i += 3) {
             sumsArray.push(
-              0.3 * (decodedA[i] || 0) +
-                0.59 * (decodedA[i + 1] || 0) +
+        		0.3 * (decodedA[i] || 0) +
+            	0.59 * (decodedA[i + 1] || 0) +
                 0.11 * (decodedA[i + 2] || 0),
             );
           }
@@ -541,6 +550,11 @@ export default class RosboardPlayer implements Player {
       });
   }
 
+  // In terms of array type convertions, this method does the same as
+  // decodeLaserScanMsg, but this time we have got 3 channels, thus
+  // we are using scaleBackInt16 helper to handle the uint16 to Float32
+  // convertions in an sligtly different manner as in the former example:
+  // (this time inf/NaN values are not mapped)
   public decodePointCloud2Msg(message: any): void {
     const rdata = this._base64decode(message._data_uint16.points);
     const rview = new DataView(rdata);
@@ -574,8 +588,12 @@ export default class RosboardPlayer implements Player {
 
     // Adjust the dimentions to fit for 1D (unordered clouds)
     message.width = pointsFloat32.length / 3;
-    message.height = 1;
-    message.point_step = 12;
+
+	// Unordered clouds always have the following height = 1 and point_step = 12
+	// This means that clouds which come with more dimentions will be also
+	// treated as one-dimentional
+    message.height = 1;     
+	message.point_step = 12;
     message.row_step = message.width * message.point_step;
 
     message.data = points;
