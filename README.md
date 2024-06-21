@@ -72,12 +72,15 @@ The official binary distributions available at [studio.foxglove.dev](https://stu
 Foxglove Studio can be self-hosted using our [docker image](https://ghcr.io/foxglove/studio). Please note that this build does not contain any closed source functionality.
 
 ### Building the container
+
 Please after cloning the repo you need to download some stuff from git lfs with:
+
 ```sh
 git lfs pull
 ```
 
 After that just build the container with:
+
 ```sh
 docker build -t local-foxglove .
 
@@ -92,11 +95,13 @@ docker run --rm -p "8080:8080" local-foxglove
 Foxglove Studio will be accessible in your browser at [localhost:8080](http://localhost:8080/).
 
 ### Developing with the container
+
 The build process takes some minutes, so it is not practical to rebuild the container every time you make a change. You can use the following command to mount the local source code into the container and run the development server. But first, you need to modify the Dockerfile to comment the release part. For that, comment ALL lines from line 7 to the end of the Dockerfile. Then rebuild. After that, you can run the following command:
 
 ```sh
 docker run --rm -it -p "8080:8080" --volume "${PWD}":"/src" --entrypoint bash local-foxglove
 ```
+
 It should open a bash terminal inside the container. Then you can run the following commands to start the development server:
 
 ```sh
@@ -124,28 +129,23 @@ Note: All contributors must agree to our [Contributor License Agreement](https:/
 
 Foxglove Studio originally began as a fork of [Webviz](https://github.com/cruise-automation/webviz), an open source project developed by [Cruise](https://getcruise.com/). Most of the Webviz code has been rewritten, but some files still carry a Cruise license header where appropriate.
 
-## Using the KiwiCampus Fork for Rosboard
+## Using with Rosboard
 
-To use this feature, follow the steps below:
+We developed a new player compatible with also our own [fork of rosboard](https://github.com/kiwicampus/rosboard). To use it, you need to follow the instructions below:
 
-1. **Access the KiwiCampus Fork**:  
+1. **Use this Foxglove Fork**:
    You will need to use the [KiwiCampus fork for this project](https://github.com/kiwicampus/studio) or a derived version.
 
-2. **Connecting to Rosboard**:  
+1. **Use our Rosboard Fork**:
+   You will need to use the [KiwiCampus fork for Rosboard](https://github.com/kiwicampus/rosboard) on the robot you want to connect to.
+
+1. **Connecting to Rosboard**:
    Similar to other available protocols (such as Rosbridge and Foxglove websocket), you can connect to Rosboard by following these steps:
 
    - Open the application.
    - Navigate to `File` -> `Open connection...`.
    - Select `Rosboard` from the list of available protocols.
-   - Paste your websocket URL running Rosboard.
+   - Paste your websocket URL running Rosboard. Remeber it takes the form `ws://<ip>:<port>/rosboard/v1`.
    - Click `Open`.
 
-3. **Using Rosboard**:  
-   Once connected, you should be able to use Rosboard right away.
-
-### Additional Information
-
-- **Websocket URL**: Ensure that your Rosboard instance is running and accessible via the websocket URL you intend to use.
-- **Compatibility**: This feature is compatible with the KiwiCampus fork and potentially other derived versions that support Rosboard.
-
-By following these steps, you can effectively utilize Rosboard for your project needs.
+- **Note**: Ensure that your Rosboard instance is running and accessible via the websocket URL you intend to use.
