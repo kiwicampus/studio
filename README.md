@@ -124,4 +124,28 @@ Note: All contributors must agree to our [Contributor License Agreement](https:/
 
 Foxglove Studio originally began as a fork of [Webviz](https://github.com/cruise-automation/webviz), an open source project developed by [Cruise](https://getcruise.com/). Most of the Webviz code has been rewritten, but some files still carry a Cruise license header where appropriate.
 
-## Connecting to Rosboard
+## Using the KiwiCampus Fork for Rosboard
+
+To use this feature, follow the steps below:
+
+1. **Access the KiwiCampus Fork**:  
+   You will need to use the [KiwiCampus fork for this project](https://github.com/kiwicampus/studio) or a derived version.
+
+2. **Connecting to Rosboard**:  
+   Similar to other available protocols (such as Rosbridge and Foxglove websocket), you can connect to Rosboard by following these steps:
+
+   - Open the application.
+   - Navigate to `File` -> `Open connection...`.
+   - Select `Rosboard` from the list of available protocols.
+   - Paste your websocket URL running Rosboard.
+   - Click `Open`.
+
+3. **Using Rosboard**:  
+   Once connected, you should be able to use Rosboard right away.
+
+### Additional Information
+
+- **Websocket URL**: Ensure that your Rosboard instance is running and accessible via the websocket URL you intend to use.
+- **Compatibility**: This feature is compatible with the KiwiCampus fork and potentially other derived versions that support Rosboard.
+
+By following these steps, you can effectively utilize Rosboard for your project needs.
