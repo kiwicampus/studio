@@ -97,8 +97,8 @@ export default class RosboardPlayer implements Player {
 
   #typeIndex: TypeIndex = {};
 
-  #cachedImage?: Uint8Array;
-  #cachedGrid?: Int8Array;
+  #cachedImages: {[topic: string]: Uint8Array} = {};
+  #cachedGrids: {[topic: string]: Int8Array} = {};
 
   #rosClient?: RosboardClient; // The roslibjs client when we're connected.
   #id: string = uuidv4(); // Unique ID for this player.
@@ -498,8 +498,8 @@ export default class RosboardPlayer implements Player {
   public decodeImageMsg(message: any): void {
     const rdata = message._data_jpeg;
 
-    if (this.#cachedImage != undefined) {
-      message.data = this.#cachedImage;
+    if (this.#cachedImages[message._topic_name] != undefined) {
+      message.data = this.#cachedImages[message._topic_name];
     }
 
     // Decode the base64 JPEG to pixel data
@@ -507,7 +507,7 @@ export default class RosboardPlayer implements Player {
       .then((pixelData) => {
         // Assign the decoded RGB pixel data to message.data
         message.data = pixelData; // Uint8Array
-        this.#cachedImage = pixelData;
+        this.#cachedImages[message._topic_name] = pixelData;
       })
       .catch((error) => {
         console.error("Error decoding image:", error);
@@ -520,8 +520,8 @@ export default class RosboardPlayer implements Player {
   public decodeOccupancyGridMsg(message: any): void {
     const rdata = message._data_jpeg;
 
-    if (this.#cachedGrid != undefined) {
-      message.data = this.#cachedGrid;
+    if (this.#cachedGrids[message._topic_name] != undefined) {
+      message.data = this.#cachedGrids[message._topic_name];
     }
 
     // Decode the base64 PNG to pixel data
@@ -541,8 +541,8 @@ export default class RosboardPlayer implements Player {
                 0.11 * (decodedA[i + 2] || 0),
             );
           }
-          this.#cachedGrid = new Int8Array(sumsArray);
-          message.data = this.#cachedGrid;
+          this.#cachedGrids[message._topic_name] = new Int8Array(sumsArray);
+          message.data = this.#cachedGrids[message._topic_name];
         }
       })
       .catch((error) => {
