@@ -97,8 +97,8 @@ export default class RosboardPlayer implements Player {
 
   #typeIndex: TypeIndex = {};
 
-  #cachedImages: {[topic: string]: Uint8Array} = {};
-  #cachedGrids: {[topic: string]: Int8Array} = {};
+  #cachedImages: { [topic: string]: Uint8Array } = {};
+  #cachedGrids: { [topic: string]: Int8Array } = {};
 
   #rosClient?: RosboardClient; // The roslibjs client when we're connected.
   #id: string = uuidv4(); // Unique ID for this player.
@@ -256,12 +256,12 @@ export default class RosboardPlayer implements Player {
     }, 5000);
 
     try {
-	  const result = rosClient.availableTopics;
+      const result = rosClient.availableTopics;
 
-	  if (this.#typeIndex == undefined) {
-		  rosClient.requestTopicsFull();
-	  }
-	  this.#typeIndex = rosClient.topicsFull;
+      if (this.#typeIndex == undefined) {
+        rosClient.requestTopicsFull();
+      }
+      this.#typeIndex = rosClient.topicsFull;
 
       clearTimeout(topicsStallWarningTimeout);
 
@@ -296,9 +296,9 @@ export default class RosboardPlayer implements Player {
         }
       }
 
-	  if (topicsMissingDatatypes.length > 0) {
-		  rosClient.requestTopicsFull();
-	  }
+      if (topicsMissingDatatypes.length > 0) {
+        rosClient.requestTopicsFull();
+      }
 
       // We call requestTopics on a timeout to check for new topics. If there are no changes to topics
       // we want to bail and avoid updating readers, subscribers, etc.
@@ -450,7 +450,7 @@ export default class RosboardPlayer implements Player {
     }
   }
 
-  // Rosboard features some compressed messages to come also decoded 
+  // Rosboard features some compressed messages to come also decoded
   // in base64
   public _base64decode(base64: string) {
     const binary_string = window.atob(base64);
@@ -502,8 +502,10 @@ export default class RosboardPlayer implements Player {
       message.data = this.#cachedImages[message._topic_name];
     }
 
+    const numChannels: number = message.encoding === "mono8" ? 1 : 3;
+
     // Decode the base64 JPEG to pixel data
-    decodeBase64Jpeg(rdata)
+    decodeBase64Jpeg(rdata, numChannels)
       .then((pixelData) => {
         // Assign the decoded RGB pixel data to message.data
         message.data = pixelData; // Uint8Array
@@ -533,11 +535,11 @@ export default class RosboardPlayer implements Player {
         const sumsArray = [];
         const alen = decodedA.length;
         if (decodedA != undefined) {
-    	  // Transform RGB to grayscale using luminocity method coefficients
+          // Transform RGB to grayscale using luminocity method coefficients
           for (let i = 0; i < alen; i += 3) {
             sumsArray.push(
-        		0.3 * (decodedA[i] || 0) +
-            	0.59 * (decodedA[i + 1] || 0) +
+              0.3 * (decodedA[i] || 0) +
+                0.59 * (decodedA[i + 1] || 0) +
                 0.11 * (decodedA[i + 2] || 0),
             );
           }
@@ -589,11 +591,11 @@ export default class RosboardPlayer implements Player {
     // Adjust the dimentions to fit for 1D (unordered clouds)
     message.width = pointsFloat32.length / 3;
 
-	// Unordered clouds always have the following height = 1 and point_step = 12
-	// This means that clouds which come with more dimentions will be also
-	// treated as one-dimentional
-    message.height = 1;     
-	message.point_step = 12;
+    // Unordered clouds always have the following height = 1 and point_step = 12
+    // This means that clouds which come with more dimentions will be also
+    // treated as one-dimentional
+    message.height = 1;
+    message.point_step = 12;
     message.row_step = message.width * message.point_step;
 
     message.data = points;
@@ -930,33 +932,53 @@ export default class RosboardPlayer implements Player {
   }
 }
 
-async function decodeBase64Jpeg(base64String: string): Promise<Uint8Array> {
+async function decodeBase64Jpeg(base64String: string, numChannels: number): Promise<Uint8Array> {
   return await new Promise((resolve, reject) => {
     const img = new Image();
+
     img.onload = () => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
+
       if (!ctx) {
         reject(new Error("Could not get 2D context"));
         return;
       }
-      console.log(img.width);
+
       canvas.width = img.width || 0; // Ensure width is defined or default to 0
       canvas.height = img.height || 0; // Ensure height is defined or default to 0
       ctx.drawImage(img, 0, 0);
+
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
-      for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-        rgbData[j] = data[i] || 0;
-        rgbData[j + 1] = data[i + 1] || 0;
-        rgbData[j + 2] = data[i + 2] || 0;
+      const length = canvas.width * canvas.height * numChannels;
+      const resultData = new Uint8Array(length);
+
+      if (numChannels === 1) {
+        for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+          // Assuming grayscale value is taken from the red channel which is safe
+          // since the original image was actually grayscale
+          rgbData[j] = data[i] || 0;
+          resultData[j] = grayscale;
+        }
+      } else if (numChannels === 3) {
+        for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+          resultData[j] = data[i] || 0;
+          resultData[j + 1] = data[i + 1] || 0;
+          resultData[j + 2] = data[i + 2] || 0;
+        }
+      } else {
+        reject(new Error("Unsupported number of channels"));
+        return;
       }
-      resolve(rgbData);
+
+      resolve(resultData);
     };
-    img.src = `data:image/jpeg;base64,${base64String}`;
+
     img.onerror = (error) => {
       reject(error);
     };
+
+    img.src = `data:image/jpeg;base64,${base64String}`;
   });
 }
 
