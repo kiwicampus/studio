@@ -957,8 +957,7 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
         for (let i = 0, j = 0; i < data.length; i += 4, j++) {
           // Assuming grayscale value is taken from the red channel which is safe
           // since the original image was actually grayscale
-          rgbData[j] = data[i] || 0;
-          resultData[j] = grayscale;
+          resultData[j] = data[i] || 0;
         }
       } else if (numChannels === 3) {
         for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
