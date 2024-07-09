@@ -43,16 +43,6 @@ function renameNsecToNanosec(obj: any): any {
   return obj;
 }
 
-// Custom replacer function to convert 0 to 0.0 for specific fields
-function convertZerosToFixedReplacer(fields: string[]) {
-  return function (key: string, value: any): any {
-    if (fields.includes(key) && value === 0) {
-      return parseFloat(value).toFixed(1); // Ensure that 0 is represented as 0.0, this returns a string
-    }
-    return value;
-  };
-}
-
 export class PubTopic {
   rosClient: RosboardClient;
   name: string;
@@ -92,16 +82,9 @@ export class PubTopic {
       ...msg,
     };
 
-    // List of field names to check for 0 so it can be converted to 0.0
-    // This is necessary because expected values are floats and if sent just as 0
-    // rosboard dies with an error. Hacky solution but it works for now.
-    const fieldsToCast = ["x", "y", "z", "w"];
-    // Stringify the payload with custom replacer to ensure 0 is represented as "0.0"
-    let jsonString = JSON.stringify(["m", payload], convertZerosToFixedReplacer(fieldsToCast));
+    const jsonString = JSON.stringify(["m", payload]);
 
     if (jsonString !== undefined) {
-      // because 0s were converted to "0.0" (string) we need to convert them back to 0.0 (remove quotes)
-      jsonString = jsonString.replace(/"0.0"/g, "0.0");
       this.rosClient.send(jsonString);
     } else {
       console.error("Message is undefined. Cannot send.");
