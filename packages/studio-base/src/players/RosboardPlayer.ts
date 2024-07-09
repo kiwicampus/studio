@@ -17,7 +17,7 @@ import { v4 as uuidv4 } from "uuid";
 import { debouncePromise } from "@foxglove/den/async";
 // import { filterMap } from "@foxglove/den/collection";
 import Log from "@foxglove/log";
-import roslib from "@foxglove/roslibjs";
+// import roslib from "@foxglove/roslibjs";
 import { parse as parseMessageDefinition } from "@foxglove/rosmsg";
 import { MessageReader as ROS1MessageReader } from "@foxglove/rosmsg-serialization";
 import { MessageReader as ROS2MessageReader } from "@foxglove/rosmsg2-serialization";
@@ -41,7 +41,7 @@ import {
 import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
 import { bagConnectionsToDatatypes } from "@foxglove/studio-base/util/bagConnectionsHelper";
 
-import RosboardClient from "./rosboardClient";
+import RosboardClient, { PubTopic } from "./rosboardClient";
 
 const log = Log.getLogger(__dirname);
 
@@ -123,7 +123,7 @@ export default class RosboardPlayer implements Player {
   #parsedMessages: MessageEvent[] = []; // Queue of messages that we'll send in next _emitState() call.
   #requestTopicsTimeout?: ReturnType<typeof setTimeout>; // setTimeout() handle for _requestTopics().
   // active publishers for the current connection
-  #topicPublishers = new Map<string, roslib.Topic>();
+  #topicPublishers = new Map<string, PubTopic>();
   // which topics we want to advertise to other nodes
   #advertisements: AdvertiseOptions[] = [];
   #parsedTopics = new Set<string>();
@@ -723,17 +723,16 @@ export default class RosboardPlayer implements Player {
   }
 
   public setPublishers(publishers: AdvertiseOptions[]): void {
-    publishers;
+    // console.log("setPublishers: Setting publishers");
+    // console.log(publishers);
     // Since `setPublishers` is rarely called, we can get away with just throwing away the old
     // Roslib.Topic objects and creating new ones.
-    /* TODO
     for (const publisher of this.#topicPublishers.values()) {
       publisher.unadvertise();
     }
     this.#topicPublishers.clear();
     this.#advertisements = publishers;
     this.#setupPublishers();
-    */
     return;
   }
 
@@ -750,9 +749,9 @@ export default class RosboardPlayer implements Player {
   }
 
   public publish({ topic, msg }: PublishPayload): void {
-    topic;
-    msg;
-    /* TODO
+    // console.log("publish: Publishing message");
+    // console.log(topic, msg);
+
     const publisher = this.#topicPublishers.get(topic);
     if (!publisher) {
       if (this.#advertisements.some((opts) => opts.topic === topic)) {
@@ -764,7 +763,7 @@ export default class RosboardPlayer implements Player {
       );
     }
     publisher.publish(msg);
-    */
+
     return;
   }
 
@@ -848,7 +847,6 @@ export default class RosboardPlayer implements Player {
   }
 
   #setupPublishers(): void {
-    /* TODO
     // This function will be called again once a connection is established
     if (!this.#rosClient) {
       return;
@@ -857,18 +855,15 @@ export default class RosboardPlayer implements Player {
     if (this.#advertisements.length <= 0) {
       return;
     }
+    // console.log("#setupPublishers: Setting up publishers");
+    // console.log(this.#advertisements);
 
     for (const { topic, schemaName: datatype } of this.#advertisements) {
-      const roslibTopic = new roslib.Topic({
-        ros: this.#rosClient,
-        name: topic,
-        messageType: datatype,
-        queue_size: 0,
-      });
+      const roslibTopic = new PubTopic(this.#rosClient, topic, datatype, 0);
       this.#topicPublishers.set(topic, roslibTopic);
       roslibTopic.advertise();
     }
-    */
+
     return;
   }
 

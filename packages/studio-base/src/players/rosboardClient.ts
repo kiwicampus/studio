@@ -26,12 +26,88 @@ interface MessagePayload {
 type MessageCallback = (message: MessagePayload) => void;
 type EventCallback = () => void;
 
-// export default class Topic {
-//   rosboardClient: RosboardClient;
-//   name: string;
-//   messageType: string;
-//   queueSize: number;
-// }
+// Replaces any key named "nsec" with "nanosec" in the object
+function renameNsecToNanosec(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map((item) => renameNsecToNanosec(item));
+  } else if (obj !== null && typeof obj === "object") {
+    const newObj: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const newKey = key === "nsec" ? "nanosec" : key;
+        newObj[newKey] = renameNsecToNanosec(obj[key]);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+
+// Custom replacer function to convert 0 to 0.0 for specific fields
+function convertZerosToFixedReplacer(fields: string[]) {
+  return function (key: string, value: any): any {
+    if (fields.includes(key) && value === 0) {
+      return parseFloat(value).toFixed(1); // Ensure that 0 is represented as 0.0, this returns a string
+    }
+    return value;
+  };
+}
+
+export class PubTopic {
+  rosClient: RosboardClient;
+  name: string;
+  messageType: string;
+  queueSize: number;
+
+  constructor(rosClient: RosboardClient, name: string, messageType: string, queueSize: number) {
+    this.rosClient = rosClient;
+    this.name = name;
+    this.messageType = messageType;
+    this.queueSize = queueSize;
+  }
+
+  unadvertise(): void {
+    // Send message to destroy publisher in server. Message is expected to be: ["n", {topicName: xxxx}]
+    const message = JSON.stringify(["n", { topicName: this.name }]);
+    if (message !== undefined) {
+      this.rosClient.send(message);
+    } else {
+      console.error("Message is undefined. Cannot send.");
+    }
+  }
+
+  // Just for compatibility with the roslib version
+  // In rosboard we don't need to advertise the topic, it is done automatically when
+  // we send a message for the first time in the rosboard server
+  advertise(): void {}
+
+  publish(msg: MessagePayload): void {
+    // Rosboard expects headers to have nsec named nanosec, but foxglove uses nsec
+    msg = renameNsecToNanosec(msg);
+    // rosboard expects a message like this: ["m", {message dictionary}]
+    // and message dictionary is in the form of {_topic_name: topic, _topic_type: type, ...payload}
+    const payload = {
+      _topic_name: this.name,
+      _topic_type: this.messageType,
+      ...msg,
+    };
+
+    // List of field names to check for 0 so it can be converted to 0.0
+    // This is necessary because expected values are floats and if sent just as 0
+    // rosboard dies with an error. Hacky solution but it works for now.
+    const fieldsToCast = ["x", "y", "z", "w"];
+    // Stringify the payload with custom replacer to ensure 0 is represented as "0.0"
+    let jsonString = JSON.stringify(["m", payload], convertZerosToFixedReplacer(fieldsToCast));
+
+    if (jsonString !== undefined) {
+      // because 0s were converted to "0.0" (string) we need to convert them back to 0.0 (remove quotes)
+      jsonString = jsonString.replace(/"0.0"/g, "0.0");
+      this.rosClient.send(jsonString);
+    } else {
+      console.error("Message is undefined. Cannot send.");
+    }
+  }
+}
 
 export default class RosboardClient {
   ws?: WebSocket;
@@ -235,7 +311,7 @@ export default class RosboardClient {
     this.subscribe(topicName, 24);
   }
 
-  private send(message: string): void {
+  send(message: string): void {
     if (this.ws) {
       this.ws.send(message);
       //console.log('Sent message:', message);
