@@ -20,6 +20,22 @@ type Matrix3x4 = [
 type Vec8 = [number, number, number, number, number, number, number, number];
 
 /**
+ * An interface matching OpenCV-style termination criteria:
+ * - type: combination of MAX_ITER (1) and/or EPS (2).
+ * - maxCount: maximum iterations if (type & MAX_ITER).
+ * - epsilon: minimum step size if (type & EPS).
+ */
+interface TermCriteria {
+  type?: number; // e.g. 1=MAX_ITER, 2=EPS, 3=MAX_ITER|EPS
+  maxCount?: number; // e.g. 100
+  epsilon?: number; // e.g. 1e-12
+}
+
+/** Constants for clarity. */
+const TermCriteria_MAX_ITER = 1; // 0x01
+const TermCriteria_EPS = 2; // 0x02
+
+/**
  * A pinhole camera model that can be used to rectify, unrectify, and project pixel coordinates.
  * Based on `ROSPinholeCameraModel` from the ROS `image_geometry` package. See
  * <http://docs.ros.org/diamondback/api/image_geometry/html/c++/pinhole__camera__model_8cpp_source.html>
@@ -80,6 +96,7 @@ export class PinholeCameraModel {
   public readonly width: number;
   /** The full camera image height in pixels. */
   public readonly height: number;
+  readonly #model: string;
 
   // Mostly copied from `fromCameraInfo`
   // <http://docs.ros.org/diamondback/api/image_geometry/html/c++/pinhole__camera__model_8cpp_source.html#l00064>
@@ -91,7 +108,13 @@ export class PinholeCameraModel {
     if (width <= 0 || height <= 0) {
       throw new Error(`Invalid image size ${width}x${height}`);
     }
-    if (model.length > 0 && model !== "plumb_bob" && model !== "rational_polynomial") {
+    if (
+      model.length > 0 &&
+      model !== "plumb_bob" &&
+      model !== "rational_polynomial" &&
+      model !== "fisheye" &&
+      model !== "equidistant"
+    ) {
       throw new Error(`Unrecognized distortion_model "${model}"`);
     }
     if (K.length !== 0 && K.length !== 9) {
@@ -117,6 +140,7 @@ export class PinholeCameraModel {
     this.R = R.length === 9 ? (R as Matrix3) : [1, 0, 0, 0, 1, 0, 0, 0, 1];
     this.width = width;
     this.height = height;
+    this.#model = model;
 
     // Binning = 0 is considered the same as binning = 1 (no binning).
     const binningX = binning_x !== 0 ? binning_x : 1;
@@ -145,9 +169,70 @@ export class PinholeCameraModel {
    * @returns The undistorted pixel, a reference to `out`.
    */
   public undistortNormalized(out: Vector2, point: Readonly<Vector2>, iterations = 5): Vector2 {
-    const { D } = this;
-    const [k1, k2, p1, p2, k3, k4, k5, k6] = D;
+    // Distortion array: [k1, k2, p1, p2, k3, k4, k5, k6]
+    const [k1, k2, p1, p2, k3, k4, k5, k6] = this.D;
 
+    // Default TermCriteria if not provided
+    const criteria: TermCriteria = {};
+    let { type, maxCount, epsilon } = criteria;
+    if (type === undefined) {
+      // default to MAX_ITER | EPS
+      type = TermCriteria_MAX_ITER | TermCriteria_EPS;
+    }
+    if (maxCount === undefined) {
+      maxCount = 20; // default
+    }
+    if (epsilon === undefined) {
+      epsilon = 1e-6; // default
+    }
+
+    // We'll use two booleans for clarity:
+    // const useMaxIter = (type & TermCriteria_MAX_ITER) !== 0;
+    // const useEps = (type & TermCriteria_EPS) !== 0;
+
+    if (this.#model === "fisheye" || this.#model === "equidistant") {
+      //
+      // ======= FISHEYE/EQUIDISTANT MODEL =======
+      //
+      // For fish-eye, the first 4 entries of D are [k0, k1, k2, k3].
+      // In your array, that means:
+      //   k0 = D[0] = k1
+      //   k1 = D[1] = k2
+      //   k2 = D[2] = p1
+      //   k3 = D[3] = p2
+      // out.x = point.x;
+      // out.y = point.y;
+      // return out;
+      // const k_0 = k1;
+      // const k_1 = k2;
+      // const k_2 = p1;
+      // const k_3 = p2;
+
+      // Start from the input normalized coords:
+      const x0 = point.x;
+      const y0 = point.y;
+      const r_d = Math.sqrt(x0 * x0 + y0 * y0);
+
+      // If r_d is near zero, no distortion
+      if (r_d < 1e-15) {
+        out.x = x0;
+        out.y = y0;
+        return out;
+      }
+
+      // return this.#undistortFisheye(
+      //   out,
+      //   point,
+      //   r_d,
+      //   [k_0, k_1, k_2, k_3],
+      //   maxCount,
+      //   useEps,
+      //   epsilon,
+      // );
+      return this.#undistortEquidistant(out, point, r_d, [k1, k2, k3, k4], maxCount);
+    }
+
+    // Original radial-tangential distortion code
     // The distortion model is non-linear, so we use fixed-point iteration to
     // incrementally iterate to an approximation of the solution. This approach
     // is described at <http://peterabeles.com/blog/?p=73>. The Jacobi method is
@@ -204,6 +289,14 @@ export class PinholeCameraModel {
     const { R, D } = this;
     const [k1, k2, p1, p2, k3, k4, k5, k6] = D;
 
+    if (this.#model === "fisheye" || this.#model === "equidistant") {
+      // for now we just return the point as is
+      out.x = point.x;
+      out.y = point.y;
+      return out;
+    }
+
+    // Original radial-tangential distortion code
     // Formulae from:
     // <https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html>
 
@@ -331,7 +424,23 @@ export class PinholeCameraModel {
     out.y = (pixel.y - cy) / fy;
     this.undistortNormalized(out, out);
 
-    out.z = 1.0;
+    if (this.#model === "fisheye" || this.#model === "equidistant") {
+      // For fisheye, we need to account for the spherical projection
+      const r = Math.sqrt(out.x * out.x + out.y * out.y);
+      if (r > 0) {
+        const theta = Math.atan(r);
+        const s = Math.sin(theta) / r;
+        out.x *= s;
+        out.y *= s;
+        out.z = Math.cos(theta);
+      } else {
+        out.x = 0;
+        out.y = 0;
+        out.z = 1.0;
+      }
+    } else {
+      out.z = 1.0;
+    }
     return out;
   }
 
@@ -354,6 +463,105 @@ export class PinholeCameraModel {
     out.y *= invNorm;
     out.z *= invNorm;
 
+    return out;
+  }
+
+  #undistortFisheye(
+    out: Vector2,
+    point: Vector2,
+    r_d: number,
+    K: [number, number, number, number], // [k0, k1, k2, k3]
+    maxCount: number,
+    useEps: boolean,
+    epsilon: number,
+  ): Vector2 {
+    const [k0, k1_, k2_, k3_] = K;
+    const halfPi = Math.PI / 2;
+    const theta_d = Math.min(Math.max(r_d, -halfPi), halfPi);
+
+    let theta = theta_d;
+    let converged = false;
+    let iteration = 0;
+    for (; iteration < maxCount; iteration++) {
+      const t2 = theta * theta;
+      const t4 = t2 * t2;
+      const t6 = t4 * t2;
+      const t8 = t6 * t2;
+
+      const f0 = theta * (1 + k0 * t2 + k1_ * t4 + k2_ * t6 + k3_ * t8) - theta_d;
+      const f0Deriv = 1 + 3 * k0 * t2 + 5 * k1_ * t4 + 7 * k2_ * t6 + 9 * k3_ * t8;
+
+      const step = f0 / f0Deriv;
+      theta -= step;
+
+      if (useEps && Math.abs(step) < epsilon) {
+        converged = true;
+        break;
+      }
+    }
+
+    const scale = Math.tan(theta) / r_d;
+
+    // Check sign flip, as in C++ code. If sign flips, result is invalid
+    const thetaFlipped = (theta_d < 0 && theta > 0) || (theta_d > 0 && theta < 0);
+
+    if ((!useEps || converged) && !thetaFlipped) {
+      out.x = point.x * scale;
+      out.y = point.y * scale;
+    } else {
+      out.x = point.x;
+      out.y = point.y;
+    }
+    return out;
+  }
+  #undistortEquidistant(
+    out: Vector2,
+    point: Vector2,
+    r_d: number,
+    K: [number, number, number, number], // [k0, k1, k2, k3]
+    maxCount: number,
+  ): Vector2 {
+    const [k1, k2, k3, k4] = K;
+    // For equidistant model:
+    // r_d = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8)
+    // where theta is the angle from the optical axis
+    // We need to solve for theta given r_d
+
+    // Initial guess: theta = r_d
+    let theta = r_d;
+    // const maxIter = 10;
+    const eps = 1e-9;
+
+    // Newton-Raphson iteration to find theta
+    for (let i = 0; i < maxCount; i++) {
+      const theta2 = theta * theta;
+      const theta4 = theta2 * theta2;
+      const theta6 = theta4 * theta2;
+      const theta8 = theta4 * theta4;
+
+      // f = theta * (1 + k1*theta^2 + k2*theta^4 + k3*theta^6 + k4*theta^8) - r_d
+      const f = theta * (1 + k1 * theta2 + k2 * theta4 + k3 * theta6 + k4 * theta8) - r_d;
+
+      // f' = (1 + 3*k1*theta^2 + 5*k2*theta^4 + 7*k3*theta^6 + 9*k4*theta^8)
+      const fPrime = 1 + 3 * k1 * theta2 + 5 * k2 * theta4 + 7 * k3 * theta6 + 9 * k4 * theta8;
+
+      const delta = f / fPrime;
+      theta -= delta;
+
+      if (Math.abs(delta) < eps) {
+        break;
+      }
+    }
+
+    // Now we have theta, compute the undistorted coordinates
+    if (r_d > 0) {
+      const scale = Math.tan(theta) / r_d;
+      out.x = point.x * scale;
+      out.y = point.y * scale;
+    } else {
+      out.x = point.x;
+      out.y = point.y;
+    }
     return out;
   }
 }

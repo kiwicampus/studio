@@ -6,8 +6,8 @@ import * as _ from "lodash-es";
 import * as THREE from "three";
 import { assert } from "ts-essentials";
 
-import { VideoPlayer } from "@foxglove/den/video";
 import { PinholeCameraModel } from "@foxglove/den/image";
+import { VideoPlayer } from "@foxglove/den/video";
 import Logger from "@foxglove/log";
 import { toNanoSec } from "@foxglove/rostime";
 import { IRenderer } from "@foxglove/studio-base/panels/ThreeDeeRender/IRenderer";
@@ -18,9 +18,12 @@ import { projectPixel } from "@foxglove/studio-base/panels/ThreeDeeRender/render
 import { RosValue } from "@foxglove/studio-base/players/types";
 
 import { AnyImage, CompressedVideo } from "./ImageTypes";
-import { decodeCompressedImageToBitmap,   decodeCompressedVideoToBitmap,
+import {
+  decodeCompressedImageToBitmap,
+  decodeCompressedVideoToBitmap,
   emptyVideoFrame,
-  getVideoDecoderConfig, } from "./decodeImage";
+  getVideoDecoderConfig,
+} from "./decodeImage";
 import { CameraInfo } from "../../ros";
 import { DECODE_IMAGE_ERR_KEY, IMAGE_TOPIC_PATH } from "../ImageMode/constants";
 import { ColorModeSettings } from "../colorMode";
@@ -290,7 +293,6 @@ export class ImageRenderable extends Renderable<ImageUserData> {
           this.userData.firstMessageTime,
           resizeWidth,
         );
-
       } else if (IMAGE_FORMATS.has(image.format)) {
         return await decodeCompressedImageToBitmap(image, resizeWidth);
       } else {
@@ -512,6 +514,12 @@ function createGeometry(
   cameraModel: PinholeCameraModel,
   settings: ImageRenderableSettings,
 ): THREE.PlaneGeometry {
+  // Force ray projection for fisheye cameras
+  settings.planarProjectionFactor = 0;
+  // settings.distance = 4;
+  // settings.distance = 1;
+  console.log("Actual settings:", settings);
+
   const WIDTH_SEGMENTS = 10;
   const HEIGHT_SEGMENTS = 10;
 
@@ -537,6 +545,7 @@ function createGeometry(
   const p = { x: 0, y: 0, z: 0 };
   const vertices = new Float32Array(size * 3);
   const uvs = new Float32Array(size * 2);
+  console.log("--------------------------------");
   for (let iy = 0; iy < gridY1; iy++) {
     for (let ix = 0; ix < gridX1; ix++) {
       const vOffset = (iy * gridX1 + ix) * 3;
@@ -545,7 +554,8 @@ function createGeometry(
       pixel.x = ix * segmentWidth;
       pixel.y = iy * segmentHeight;
       projectPixel(p, pixel, cameraModel, settings);
-
+      console.log("Initial pixel:", pixel);
+      console.log("Projected point:", p);
       vertices[vOffset + 0] = p.x;
       vertices[vOffset + 1] = p.y;
       vertices[vOffset + 2] = p.z - EPS;
@@ -554,6 +564,7 @@ function createGeometry(
       uvs[uvOffset + 1] = iy / HEIGHT_SEGMENTS;
     }
   }
+  console.log("--------------------------------");
 
   geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
   geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
