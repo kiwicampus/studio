@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -9,8 +12,8 @@ import path from "path";
 import { Configuration, WebpackPluginInstance } from "webpack";
 import type { Configuration as WebpackDevServerConfiguration } from "webpack-dev-server";
 
-import type { WebpackArgv } from "@foxglove/studio-base/WebpackArgv";
-import { makeConfig } from "@foxglove/studio-base/webpack";
+import type { WebpackArgv } from "@lichtblick/suite-base/WebpackArgv";
+import { makeConfig } from "@lichtblick/suite-base/webpack";
 
 interface WebpackConfiguration extends Configuration {
   devServer?: WebpackDevServerConfiguration;
@@ -92,7 +95,7 @@ const mainConfig = (env: unknown, argv: WebpackArgv): Configuration => {
   <html>
     <head>
       <meta charset="utf-8">
-      <title>Foxglove Studio Benchmark</title>
+      <title>Lichtblick Benchmark</title>
     </head>
     <script>
       global = globalThis;

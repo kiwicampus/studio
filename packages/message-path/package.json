@@ -1,16 +1,16 @@
 {
-  "name": "@foxglove/message-path",
+  "name": "@lichtblick/message-path",
   "license": "MPL-2.0",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/foxglove/studio.git"
+    "url": "https://github.com/lichtblick-suite/lichtblick.git"
   },
   "author": {
-    "name": "Foxglove Technologies",
-    "email": "support@foxglove.dev"
+    "name": "Lichtblick",
+    "email": "lichtblick@bmwgroup.com"
   },
-  "homepage": "https://foxglove.dev/",
+  "homepage": "https://github.com/lichtblick-suite",
   "main": "./src/index.ts",
   "files": [
     "dist",
@@ -20,11 +20,12 @@
     "prepack": "tsc -b"
   },
   "dependencies": {
+    "babel-jest": "29.7.0",
     "nearley": "2.20.1"
   },
   "devDependencies": {
-    "@foxglove/tsconfig": "2.0.0",
-    "@types/nearley": "2.11.2",
+    "@lichtblick/tsconfig": "1.0.0",
+    "@types/nearley": "2.11.5",
     "typescript": "5.3.3"
   }
 }

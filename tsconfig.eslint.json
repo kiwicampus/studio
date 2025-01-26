@@ -16,13 +16,13 @@
 // More detailed discussion at:
 // https://github.com/typescript-eslint/typescript-eslint/issues/1192#issuecomment-846491212
 {
-  "extends": "@foxglove/tsconfig/base",
+  "extends": "@lichtblick/tsconfig/base",
   "include": ["**/*", "**/.storybook/**/*"],
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["dom", "dom.iterable", "es2022", "esnext.disposable"],
     "paths": {
-      "@foxglove/studio-base/*": ["./packages/studio-base/src/*"]
+      "@lichtblick/suite-base/*": ["./packages/suite-base/src/*"]
     }
   }
 }

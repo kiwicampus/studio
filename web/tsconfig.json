@@ -1,6 +1,6 @@
 {
-  "extends": "@foxglove/tsconfig/base",
-  "include": ["**/*"],
+  "extends": "@lichtblick/tsconfig/base",
+  "include": ["**/*", "../integration-test-build.ts"],
   "compilerOptions": {
     "jsx": "react-jsx",
     "lib": ["ESNext.Disposable"],

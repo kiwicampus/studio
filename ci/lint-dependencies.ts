@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -111,13 +114,12 @@ async function getAllWorkspacePackages(roots: string[]) {
   const results: { name: string; path: string }[] = [];
   const workspacePackages: string[] = [];
   for (const workspaceRoot of roots) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const workspaceInfo = require(path.resolve(process.cwd(), workspaceRoot, "package.json"));
+    const workspaceInfo = await import(path.resolve(process.cwd(), workspaceRoot, "package.json"));
     const patterns: string[] = Array.isArray(workspaceInfo.workspaces)
       ? workspaceInfo.workspaces
       : Array.isArray(workspaceInfo.workspaces?.packages)
-      ? workspaceInfo.workspaces.packages
-      : [];
+        ? workspaceInfo.workspaces.packages
+        : [];
     for (const pattern of patterns) {
       for (const packagePath of await promisify(glob)(pattern)) {
         workspacePackages.push(path.resolve(process.cwd(), workspaceRoot, packagePath));
@@ -126,8 +128,7 @@ async function getAllWorkspacePackages(roots: string[]) {
   }
   for (const packagePath of workspacePackages) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const packageInfo = require(path.join(packagePath, "package.json"));
+      const packageInfo = await import(path.join(packagePath, "package.json"));
       const name = packageInfo.name;
       if (typeof name !== "string") {
         warning(`No name in package.json at ${packagePath}`);
@@ -138,8 +139,8 @@ async function getAllWorkspacePackages(roots: string[]) {
         continue;
       }
       results.push({ path: packagePath, name });
-    } catch (err) {
-      // skip directories without package.json
+    } catch (err: unknown) {
+      console.error(err);
     }
   }
   return results;
@@ -170,4 +171,6 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((err: unknown) => {
+  console.error(err);
+});

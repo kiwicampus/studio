@@ -1,33 +1,36 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { filterMap } from "@foxglove/den/collection";
-import Log from "@foxglove/log";
-import { toRFC3339String } from "@foxglove/rostime";
-import { MessageEvent } from "@foxglove/studio";
-import { GlobalVariables } from "@foxglove/studio-base/hooks/useGlobalVariables";
-import { BlockLoader } from "@foxglove/studio-base/players/IterablePlayer/BlockLoader";
-import { IIterableSource } from "@foxglove/studio-base/players/IterablePlayer/IIterableSource";
-import PlayerProblemManager from "@foxglove/studio-base/players/PlayerProblemManager";
+import { filterMap } from "@lichtblick/den/collection";
+import Log from "@lichtblick/log";
+import { toRFC3339String } from "@lichtblick/rostime";
+import { MessageEvent } from "@lichtblick/suite";
+import { GlobalVariables } from "@lichtblick/suite-base/hooks/useGlobalVariables";
+import { BlockLoader } from "@lichtblick/suite-base/players/IterablePlayer/BlockLoader";
+import { IIterableSource } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
+import PlayerProblemManager from "@lichtblick/suite-base/players/PlayerProblemManager";
+import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
   Player,
-  PlayerCapabilities,
   PlayerPresence,
   PlayerState,
   Progress,
   PublishPayload,
   SubscribePayload,
-} from "@foxglove/studio-base/players/types";
-import delay from "@foxglove/studio-base/util/delay";
+} from "@lichtblick/suite-base/players/types";
+import delay from "@lichtblick/suite-base/util/delay";
 
 const log = Log.getLogger(__filename);
 
 const DEFAULT_CACHE_SIZE_BYTES = 1.0e9;
 const MIN_MEM_CACHE_BLOCK_SIZE_NS = 0.1e9;
 const MAX_BLOCKS = 400;
-const CAPABILITIES: string[] = [PlayerCapabilities.playbackControl];
+const CAPABILITIES: string[] = [PLAYER_CAPABILITIES.playbackControl];
 
 class BenchmarkPlayer implements Player {
   #source: IIterableSource;
@@ -144,7 +147,8 @@ class BenchmarkPlayer implements Player {
         minBlockDurationNs: MIN_MEM_CACHE_BLOCK_SIZE_NS,
         problemManager: this.#problemManager,
       });
-    } catch (err) {
+    } catch (e: unknown) {
+      const err = e as Error;
       log.error(err);
 
       const startStr = toRFC3339String(startTime);
@@ -273,7 +277,11 @@ class BenchmarkPlayer implements Player {
         const endFrame = performance.now();
         seekFramesMs.push(endFrame - startFrame);
       }
-      seekFramesMs.forEach((ms, i) => (seekFramesMsTotals[i]! += ms));
+      seekFramesMs.forEach((ms, i) => {
+        if (seekFramesMsTotals[i] != undefined) {
+          seekFramesMsTotals[i] += ms;
+        }
+      });
     }
 
     log.info(

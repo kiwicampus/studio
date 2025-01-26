@@ -1,16 +1,16 @@
 {
-  "name": "@foxglove/hooks",
+  "name": "@lichtblick/hooks",
   "license": "MPL-2.0",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/foxglove/studio.git"
+    "url": "https://github.com/lichtblick-suite/lichtblick.git"
   },
   "author": {
-    "name": "Foxglove Technologies",
-    "email": "support@foxglove.dev"
+    "name": "Lichtblick",
+    "email": "lichtblick@bmwgroup.com"
   },
-  "homepage": "https://foxglove.dev/",
+  "homepage": "https://github.com/lichtblick-suite",
   "main": "./src/index.ts",
   "files": [
     "dist",
@@ -20,18 +20,18 @@
     "prepack": "tsc -b"
   },
   "devDependencies": {
-    "@foxglove/tsconfig": "2.0.0",
-    "@testing-library/react": "14.0.0",
+    "@lichtblick/tsconfig": "1.0.0",
+    "@testing-library/react": "16.0.0",
     "@types/foxglove__web": "workspace:*",
     "@types/lodash-es": "^4",
     "typescript": "5.3.3"
   },
   "dependencies": {
-    "@foxglove/log": "workspace:*",
+    "@lichtblick/log": "workspace:*",
     "lodash-es": "4.17.21",
     "shallowequal": "1.1.0"
   },
   "peerDependencies": {
-    "react": "^18.2.0"
+    "react": "^18.3.1"
   }
 }

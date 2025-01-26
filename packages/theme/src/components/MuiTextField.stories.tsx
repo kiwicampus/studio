@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -38,12 +41,12 @@ export default {
   },
   parameters: { colorScheme: "light" },
   decorators: [
-    (_StoryFn, { args: { color } }): JSX.Element => {
+    (_StoryFn, { args: { color } }): React.JSX.Element => {
       const sharedProps = (variant: TextFieldProps["variant"], size: TextFieldProps["size"]) => ({
         defaultValue: size,
         error: color === "error",
-        size: size as TextFieldProps["size"],
-        variant: variant as TextFieldProps["variant"],
+        size,
+        variant,
       });
 
       return (
@@ -122,7 +125,7 @@ export default {
                       )}
                     />
 
-                    <FormControl color={color} variant={variant as TextFieldProps["variant"]}>
+                    <FormControl color={color} variant={variant}>
                       <InputLabel id={`${variant}-${size}-select-label`}>Select</InputLabel>
                       <Select
                         labelId={`${variant}-${size}-select-label`}

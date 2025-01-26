@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -36,12 +39,21 @@ export function quoteFieldNameIfNeeded(name: string): string {
   return `"${name.replace(/[\\"]/g, (char) => `\\${char}`)}"`;
 }
 
+const CacheMessagePath: Record<string, MessagePath> = {};
+
 const parseMessagePath = (path: string): MessagePath | undefined => {
-  // Need to create a new Parser object for every new string to parse (should be cheap).
+  // Cache the parsed message path to avoid re-parsing the same path
+  if (CacheMessagePath[path]) {
+    return CacheMessagePath[path];
+  }
+
   const parser = new Parser(grammarObj);
   try {
-    return parser.feed(path).results[0];
-  } catch (_err) {
+    const feedResults = parser.feed(path).results;
+    CacheMessagePath[path] = feedResults[0];
+    return feedResults[0];
+  } catch (err: unknown) {
+    console.error("Error parsing message path", err);
     return undefined;
   }
 };

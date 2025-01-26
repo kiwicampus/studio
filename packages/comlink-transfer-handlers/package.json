@@ -1,16 +1,16 @@
 {
-  "name": "@foxglove/comlink-transfer-handlers",
+  "name": "@lichtblick/comlink-transfer-handlers",
   "license": "MPL-2.0",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/foxglove/studio.git"
+    "url": "https://github.com/lichtblick-suite/lichtblick.git"
   },
   "author": {
-    "name": "Foxglove Technologies",
-    "email": "support@foxglove.dev"
+    "name": "Lichtblick",
+    "email": "lichtblick@bmwgroup.com"
   },
-  "homepage": "https://foxglove.dev/",
+  "homepage": "https://github.com/lichtblick-suite",
   "main": "./src/index.ts",
   "files": [
     "dist",
@@ -20,8 +20,8 @@
     "prepack": "tsc -b"
   },
   "devDependencies": {
-    "@foxglove/tsconfig": "2.0.0",
-    "comlink": "github:foxglove/comlink#216a78c5fb08550fdef4a725f468999707fec5bd",
+    "@lichtblick/comlink": "1.0.3",
+    "@lichtblick/tsconfig": "1.0.0",
     "typescript": "5.3.3"
   }
 }

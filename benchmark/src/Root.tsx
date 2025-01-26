@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -10,7 +13,7 @@ import {
   AppSetting,
   LaunchPreferenceValue,
   StudioApp,
-} from "@foxglove/studio-base";
+} from "@lichtblick/suite-base";
 
 import { McapLocalBenchmarkDataSourceFactory, SyntheticDataSourceFactory } from "./dataSources";
 import { LAYOUTS } from "./layouts";
@@ -22,7 +25,7 @@ import {
 } from "./players";
 import { MemoryAppConfiguration } from "./services";
 
-export function Root(): JSX.Element {
+export function Root(): React.JSX.Element {
   const [appConfiguration] = useState(
     () =>
       new MemoryAppConfiguration({
@@ -53,6 +56,7 @@ export function Root(): JSX.Element {
     return sources;
   }, []);
 
+  const [extensionLoaders] = useState(() => []);
   const url = new URL(window.location.href);
 
   return (
@@ -61,6 +65,8 @@ export function Root(): JSX.Element {
       deepLinks={[url.href]}
       dataSources={dataSources}
       appConfiguration={appConfiguration}
+      extensionLoaders={extensionLoaders}
+      enableGlobalCss
     >
       <StudioApp />
     </SharedRoot>

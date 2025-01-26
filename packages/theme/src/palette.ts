@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -33,10 +36,10 @@ export const dark: PaletteOptions = {
   tonalOffset: 0.15,
   appBar: {
     main: "#35363A",
-    primary: "#9480ed",
+    primary: "#808080",
     text: "#ffffff",
   },
-  primary: { main: "#9480ed" },
+  primary: { main: "#EF833A" },
   secondary: { main: "#b1b1b1" },
   error: { main: "#f54966" },
   warning: { main: "#eba800" },
@@ -76,11 +79,11 @@ export const light: PaletteOptions = {
   tonalOffset: 0.22,
   appBar: {
     main: "#27272b",
-    primary: "#9480ed",
+    primary: "#404040",
     text: "#ffffff",
   },
-  primary: { main: "#6f3be8" },
-  secondary: { main: "#808080" },
+  primary: { main: "#EF833A" },
+  secondary: { main: "#404040" },
   error: { main: "#db3553" },
   warning: { main: "#eba800" },
   success: { main: "#107c10" },

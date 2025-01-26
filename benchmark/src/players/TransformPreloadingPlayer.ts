@@ -1,32 +1,36 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import Log from "@foxglove/log";
-import { Time, compare } from "@foxglove/rostime";
 import { FrameTransform, Vector3 } from "@foxglove/schemas";
-import { MessageEvent } from "@foxglove/studio";
-import { GlobalVariables } from "@foxglove/studio-base/hooks/useGlobalVariables";
-import { normalizeFrameTransform } from "@foxglove/studio-base/panels/ThreeDeeRender/normalizeMessages";
+
+import Log from "@lichtblick/log";
+import { Time, compare } from "@lichtblick/rostime";
+import { MessageEvent } from "@lichtblick/suite";
+import { GlobalVariables } from "@lichtblick/suite-base/hooks/useGlobalVariables";
+import { normalizeFrameTransform } from "@lichtblick/suite-base/panels/ThreeDeeRender/normalizeMessages";
+import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
   BlockCache,
   MessageBlock,
   Player,
-  PlayerCapabilities,
   PlayerPresence,
   PlayerState,
   PublishPayload,
   SubscribePayload,
   Topic,
   TopicStats,
-} from "@foxglove/studio-base/players/types";
-import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
-import delay from "@foxglove/studio-base/util/delay";
+} from "@lichtblick/suite-base/players/types";
+import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
+import delay from "@lichtblick/suite-base/util/delay";
 
 const log = Log.getLogger(__filename);
 
-const CAPABILITIES: string[] = [PlayerCapabilities.playbackControl];
+const CAPABILITIES: string[] = [PLAYER_CAPABILITIES.playbackControl];
 
 class TransformPreloadingPlayer implements Player {
   #name: string = "transformpreloading";
@@ -247,7 +251,13 @@ class TransformPreloadingPlayer implements Player {
         seekFramesMs.push(endFrame - startFrame);
       }
       // eslint-disable-next-line no-loop-func
-      seekFramesMs.forEach((ms, i) => (seekFramesMsTotals[i]! += ms));
+      seekFramesMs.forEach((ms, i) => {
+        if (typeof seekFramesMsTotals[i] === "number") {
+          seekFramesMsTotals[i] += ms;
+        } else {
+          seekFramesMsTotals[i] = ms;
+        }
+      });
     }
 
     log.info(`Number of messages: ${allMessages.length}`);
@@ -291,7 +301,13 @@ class TransformPreloadingPlayer implements Player {
         const endFrame = performance.now();
         seekFramesMs.push(endFrame - startFrame);
       }
-      seekFramesMs.forEach((ms, i) => (seekFramesMsTotals[i]! += ms));
+      seekFramesMs.forEach((ms, i) => {
+        if (typeof seekFramesMsTotals[i] === "number") {
+          seekFramesMsTotals[i] += ms;
+        } else {
+          seekFramesMsTotals[i] = ms;
+        }
+      });
     }
 
     log.info(

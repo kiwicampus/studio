@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -10,6 +13,8 @@
 //   This source code is licensed under the Apache License, Version 2.0,
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
+
+import { Parser } from "nearley";
 
 import { parseMessagePath } from "./parseMessagePath";
 
@@ -516,5 +521,24 @@ describe("parseRosPath", () => {
     expect(parseMessagePath("/topic.foo[bar]")).toBeUndefined();
     expect(parseMessagePath("/topic.foo{bar==}")).toBeUndefined();
     expect(parseMessagePath("/topic.foo{bar==baz}")).toBeUndefined();
+  });
+
+  it("uses the cached value instead of parse the path again", () => {
+    jest.mock("nearley");
+    const parserFeedSpy = jest.spyOn(Parser.prototype, "feed");
+
+    const path = "/some/topic";
+
+    const firstResult = parseMessagePath(path);
+    const secondResult = parseMessagePath(path);
+    const thirdResult = parseMessagePath(path);
+
+    expect(secondResult).toEqual(firstResult);
+    expect(thirdResult).toEqual(firstResult);
+
+    // Verify that the Parser constructor was only called once
+    expect(parserFeedSpy).toHaveBeenCalledTimes(1);
+
+    jest.unmock("nearley");
   });
 });

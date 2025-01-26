@@ -1,5 +1,5 @@
 # Build stage
-FROM node:16 as build
+FROM node:16 AS build
 WORKDIR /src
 COPY . ./
 
@@ -17,11 +17,11 @@ EXPOSE 8080
 
 COPY <<EOF /entrypoint.sh
 # Optionally override the default layout with one provided via bind mount
-mkdir -p /foxglove
-touch /foxglove/default-layout.json
+mkdir -p /lichtblick
+touch /lichtblick/default-layout.json
 index_html=\$(cat index.html)
-replace_pattern='/*FOXGLOVE_STUDIO_DEFAULT_LAYOUT_PLACEHOLDER*/'
-replace_value=\$(cat /foxglove/default-layout.json)
+replace_pattern='/*LICHTBLICK_SUITE_DEFAULT_LAYOUT_PLACEHOLDER*/'
+replace_value=\$(cat /lichtblick/default-layout.json)
 echo "\${index_html/"\$replace_pattern"/\$replace_value}" > index.html
 
 # Continue executing the CMD

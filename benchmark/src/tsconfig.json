@@ -1,5 +1,5 @@
 {
-  "extends": "@foxglove/tsconfig/base",
+  "extends": "@lichtblick/tsconfig/base",
   "include": ["./**/*"],
   "compilerOptions": {
     "noEmit": true,
@@ -8,7 +8,7 @@
     "experimentalDecorators": true,
     "useUnknownInCatchVariables": false,
     "paths": {
-      "@foxglove/studio-base/*": ["../../packages/studio-base/src/*"]
+      "@lichtblick/suite-base/*": ["../../packages/suite-base/src/*"]
     }
   }
 }

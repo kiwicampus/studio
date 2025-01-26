@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -13,16 +16,16 @@ import tsUnusedExports from "ts-unused-exports";
 // Note: use the "// ts-unused-exports:disable-next-line" comment above an export if you would like to mark it
 // as used even though it appears unused. This might happen for exports which are injected via webpack.
 async function main(): Promise<void> {
-  const results = tsUnusedExports(path.join(__dirname, "../packages/studio-base/tsconfig.json"), [
+  const results = tsUnusedExports(path.join(__dirname, "../packages/suite-base/tsconfig.json"), [
     "--findCompletelyUnusedFiles",
     "--ignoreLocallyUsed",
   ]);
   const ignorePathsRegex = new RegExp(
     [
       String.raw`\.stories\.tsx?$`,
-      String.raw`packages/studio-base/src/index\.ts`,
-      String.raw`packages/studio-base/src/panels/ThreeDeeRender/transforms/index\.ts`, // `export *` is not correctly analyzed <https://github.com/pzavolinsky/ts-unused-exports/issues/286>
-      String.raw`packages/studio-base/src/test/`,
+      String.raw`packages/suite-base/src/index\.ts`,
+      String.raw`packages/suite-base/src/panels/ThreeDeeRender/transforms/index\.ts`, // `export *` is not correctly analyzed <https://github.com/pzavolinsky/ts-unused-exports/issues/286>
+      String.raw`packages/suite-base/src/test/`,
     ].join("|"),
   );
 
@@ -64,7 +67,7 @@ async function main(): Promise<void> {
 }
 
 if (require.main === module) {
-  main().catch((e) => {
+  main().catch((e: unknown) => {
     console.error(e);
     process.exit(1);
   });

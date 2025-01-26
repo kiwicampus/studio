@@ -1,12 +1,15 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import Log from "@foxglove/log";
-import * as rostime from "@foxglove/rostime";
-import { Time } from "@foxglove/rostime";
-import { MessageEvent } from "@foxglove/studio";
-import { GlobalVariables } from "@foxglove/studio-base/hooks/useGlobalVariables";
+import Log from "@lichtblick/log";
+import * as rostime from "@lichtblick/rostime";
+import { Time } from "@lichtblick/rostime";
+import { MessageEvent } from "@lichtblick/suite";
+import { GlobalVariables } from "@lichtblick/suite-base/hooks/useGlobalVariables";
 import {
   AdvertiseOptions,
   Player,
@@ -16,8 +19,8 @@ import {
   SubscribePayload,
   Topic,
   TopicStats,
-} from "@foxglove/studio-base/players/types";
-import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
+} from "@lichtblick/suite-base/players/types";
+import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 
 import { BenchmarkStats } from "../BenchmarkStats";
 
