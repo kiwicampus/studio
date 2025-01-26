@@ -1,10 +1,14 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import { Mutex } from "async-mutex";
 import EventEmitter from "eventemitter3";
-import Logger from "@foxglove/log";
+
+import Logger from "@lichtblick/log";
 
 // foxglove-depcheck-used: @types/dom-webcodecs
 
@@ -60,7 +64,7 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
    * be called before decode() will return a VideoFrame.
    */
   public async init(decoderConfig: VideoDecoderConfig): Promise<void> {
-    return await this.#mutex.runExclusive(async () => {
+    await this.#mutex.runExclusive(async () => {
       // Optimize for latency means we do not have to call flush() in every decode() call
       // See <https://github.com/w3c/webcodecs/issues/206>
       decoderConfig.optimizeForLatency = true;
@@ -71,7 +75,9 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
 
       let support = await VideoDecoder.isConfigSupported(modifiedConfig);
       if (support.supported !== true) {
-        log.warn(`VideoDecoder does not support configuration ${JSON.stringify(modifiedConfig)}. Trying without 'prefer-hardware'`);
+        log.warn(
+          `VideoDecoder does not support configuration ${JSON.stringify(modifiedConfig)}. Trying without 'prefer-hardware'`,
+        );
         // If 'prefer-hardware' is not supported, try without it
         modifiedConfig = { ...decoderConfig };
         support = await VideoDecoder.isConfigSupported(modifiedConfig);

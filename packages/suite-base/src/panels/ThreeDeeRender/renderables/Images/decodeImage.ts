@@ -24,7 +24,7 @@ import {
   decodeYUYV,
 } from "@lichtblick/den/image";
 import { H264, VideoPlayer } from "@lichtblick/den/video";
-import { toMicroSec } from "@foxglove/rostime";
+import { toMicroSec } from "@lichtblick/rostime";
 
 import { CompressedImageTypes, CompressedVideo } from "./ImageTypes";
 import { Image as RosImage } from "../../ros";

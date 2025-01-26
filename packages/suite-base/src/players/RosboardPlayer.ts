@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
@@ -11,24 +14,24 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
+// import { filterMap } from "@foxglove/den/collection";
+// import roslib from "@foxglove/roslibjs";
 import * as _ from "lodash-es";
 import { v4 as uuidv4 } from "uuid";
 
-import { debouncePromise } from "@foxglove/den/async";
-// import { filterMap } from "@foxglove/den/collection";
-import Log from "@foxglove/log";
-// import roslib from "@foxglove/roslibjs";
-import { parse as parseMessageDefinition } from "@foxglove/rosmsg";
-import { MessageReader as ROS1MessageReader } from "@foxglove/rosmsg-serialization";
-import { MessageReader as ROS2MessageReader } from "@foxglove/rosmsg2-serialization";
-import { Time, fromMillis, toSec } from "@foxglove/rostime";
-import { ParameterValue } from "@foxglove/studio";
-import PlayerProblemManager from "@foxglove/studio-base/players/PlayerProblemManager";
+import { debouncePromise } from "@lichtblick/den/async";
+import Log from "@lichtblick/log";
+import { parse as parseMessageDefinition } from "@lichtblick/rosmsg";
+import { MessageReader as ROS1MessageReader } from "@lichtblick/rosmsg-serialization";
+import { MessageReader as ROS2MessageReader } from "@lichtblick/rosmsg2-serialization";
+import { Time, fromMillis, toSec } from "@lichtblick/rostime";
+import { ParameterValue } from "@lichtblick/suite";
+import PlayerProblemManager from "@lichtblick/suite-base/players/PlayerProblemManager";
+import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
   MessageEvent,
   Player,
-  PlayerCapabilities,
   PlayerState,
   PublishPayload,
   SubscribePayload,
@@ -37,15 +40,15 @@ import {
   PlayerMetricsCollectorInterface,
   TopicStats,
   TopicWithSchemaName,
-} from "@foxglove/studio-base/players/types";
-import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
-import { bagConnectionsToDatatypes } from "@foxglove/studio-base/util/bagConnectionsHelper";
+} from "@lichtblick/suite-base/players/types";
+import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
+import { bagConnectionsToDatatypes } from "@lichtblick/suite-base/util/bagConnectionsHelper";
 
 import RosboardClient, { PubTopic } from "./rosboardClient";
 
 const log = Log.getLogger(__dirname);
 
-const CAPABILITIES = [PlayerCapabilities.advertise, PlayerCapabilities.callServices];
+const CAPABILITIES = [PLAYER_CAPABILITIES.advertise, PLAYER_CAPABILITIES.callServices];
 
 /*
 type RosNodeDetails = Record<

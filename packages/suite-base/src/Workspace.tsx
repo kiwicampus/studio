@@ -61,6 +61,10 @@ import VariablesList from "@lichtblick/suite-base/components/VariablesList";
 import { WorkspaceDialogs } from "@lichtblick/suite-base/components/WorkspaceDialogs";
 import { useAppContext } from "@lichtblick/suite-base/context/AppContext";
 import {
+  LayoutData,
+  useCurrentLayoutActions,
+} from "@lichtblick/suite-base/context/CurrentLayoutContext";
+import {
   LayoutState,
   useCurrentLayoutSelector,
 } from "@lichtblick/suite-base/context/CurrentLayoutContext";
@@ -91,7 +95,6 @@ import { parseAppURLState } from "@lichtblick/suite-base/util/appURLState";
 import isDesktopApp from "@lichtblick/suite-base/util/isDesktopApp";
 
 import { useWorkspaceActions } from "./context/Workspace/useWorkspaceActions";
-import {LayoutData, useCurrentLayoutActions} from "@foxglove/studio-base/context/CurrentLayoutContext";
 
 const log = Logger.getLogger(__filename);
 
@@ -574,7 +577,13 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
   }, [props.deepLinks]);
 
   const [unappliedSourceArgs, setUnappliedSourceArgs] = useState(
-    targetUrlState ? { ds: targetUrlState.ds, dsParams: targetUrlState.dsParams, layoutUrl: targetUrlState.layoutUrl } : undefined,
+    targetUrlState
+      ? {
+          ds: targetUrlState.ds,
+          dsParams: targetUrlState.dsParams,
+          layoutUrl: targetUrlState.layoutUrl,
+        }
+      : undefined,
   );
 
   const selectEvent = useEvents(selectSelectEvent);
@@ -597,12 +606,12 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
       return;
     }
 
-    const layoutData = parsedState as LayoutData
+    const layoutData = parsedState as LayoutData;
     setCurrentLayout({
       name: "test-layout",
       data: layoutData,
     });
-  }
+  };
 
   // Load data source from URL.
   useEffect(() => {
@@ -610,7 +619,7 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
       return;
     }
 
-    let shouldUpdate
+    let shouldUpdate;
 
     // Apply any available data source args
     if (unappliedSourceArgs.ds) {
@@ -620,15 +629,15 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
         params: unappliedSourceArgs.dsParams,
       });
       selectEvent(unappliedSourceArgs.dsParams?.eventId);
-      shouldUpdate = true
+      shouldUpdate = true;
     }
     // Apply any available datasource args
     if (unappliedSourceArgs.layoutUrl) {
       fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
-      shouldUpdate = true
+      shouldUpdate = true;
     }
     if (shouldUpdate) {
-      setUnappliedSourceArgs({ds: undefined, dsParams: undefined, layoutUrl: undefined});
+      setUnappliedSourceArgs({ ds: undefined, dsParams: undefined, layoutUrl: undefined });
     }
   }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs]);
 
