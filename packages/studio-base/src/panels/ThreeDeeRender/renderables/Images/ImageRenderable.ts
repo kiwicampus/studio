@@ -6,8 +6,8 @@ import * as _ from "lodash-es";
 import * as THREE from "three";
 import { assert } from "ts-essentials";
 
-import { VideoPlayer } from "@foxglove/den/video";
 import { PinholeCameraModel } from "@foxglove/den/image";
+import { VideoPlayer } from "@foxglove/den/video";
 import Logger from "@foxglove/log";
 import { toNanoSec } from "@foxglove/rostime";
 import { IRenderer } from "@foxglove/studio-base/panels/ThreeDeeRender/IRenderer";
@@ -18,9 +18,12 @@ import { projectPixel } from "@foxglove/studio-base/panels/ThreeDeeRender/render
 import { RosValue } from "@foxglove/studio-base/players/types";
 
 import { AnyImage, CompressedVideo } from "./ImageTypes";
-import { decodeCompressedImageToBitmap,   decodeCompressedVideoToBitmap,
+import {
+  decodeCompressedImageToBitmap,
+  decodeCompressedVideoToBitmap,
   emptyVideoFrame,
-  getVideoDecoderConfig, } from "./decodeImage";
+  getVideoDecoderConfig,
+} from "./decodeImage";
 import { CameraInfo } from "../../ros";
 import { DECODE_IMAGE_ERR_KEY, IMAGE_TOPIC_PATH } from "../ImageMode/constants";
 import { ColorModeSettings } from "../colorMode";
@@ -290,7 +293,6 @@ export class ImageRenderable extends Renderable<ImageUserData> {
           this.userData.firstMessageTime,
           resizeWidth,
         );
-
       } else if (IMAGE_FORMATS.has(image.format)) {
         return await decodeCompressedImageToBitmap(image, resizeWidth);
       } else {
