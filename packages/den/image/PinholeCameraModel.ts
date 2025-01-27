@@ -20,6 +20,22 @@ type Matrix3x4 = [
 type Vec8 = [number, number, number, number, number, number, number, number];
 
 /**
+ * An interface matching OpenCV-style termination criteria:
+ * - type: combination of MAX_ITER (1) and/or EPS (2).
+ * - maxCount: maximum iterations if (type & MAX_ITER).
+ * - epsilon: minimum step size if (type & EPS).
+ */
+interface TermCriteria {
+  type?: number; // e.g. 1=MAX_ITER, 2=EPS, 3=MAX_ITER|EPS
+  maxCount?: number; // e.g. 100
+  epsilon?: number; // e.g. 1e-12
+}
+
+/** Constants for clarity. */
+const TermCriteria_MAX_ITER = 1; // 0x01
+const TermCriteria_EPS = 2; // 0x02
+
+/**
  * A pinhole camera model that can be used to rectify, unrectify, and project pixel coordinates.
  * Based on `ROSPinholeCameraModel` from the ROS `image_geometry` package. See
  * <http://docs.ros.org/diamondback/api/image_geometry/html/c++/pinhole__camera__model_8cpp_source.html>
@@ -80,6 +96,8 @@ export class PinholeCameraModel {
   public readonly width: number;
   /** The full camera image height in pixels. */
   public readonly height: number;
+  /** The camera model. */
+  public readonly model: string;
 
   // Mostly copied from `fromCameraInfo`
   // <http://docs.ros.org/diamondback/api/image_geometry/html/c++/pinhole__camera__model_8cpp_source.html#l00064>
@@ -91,7 +109,13 @@ export class PinholeCameraModel {
     if (width <= 0 || height <= 0) {
       throw new Error(`Invalid image size ${width}x${height}`);
     }
-    if (model.length > 0 && model !== "plumb_bob" && model !== "rational_polynomial") {
+    if (
+      model.length > 0 &&
+      model !== "plumb_bob" &&
+      model !== "rational_polynomial" &&
+      model !== "fisheye" &&
+      model !== "equidistant"
+    ) {
       throw new Error(`Unrecognized distortion_model "${model}"`);
     }
     if (K.length !== 0 && K.length !== 9) {
@@ -117,6 +141,7 @@ export class PinholeCameraModel {
     this.R = R.length === 9 ? (R as Matrix3) : [1, 0, 0, 0, 1, 0, 0, 0, 1];
     this.width = width;
     this.height = height;
+    this.model = model;
 
     // Binning = 0 is considered the same as binning = 1 (no binning).
     const binningX = binning_x !== 0 ? binning_x : 1;
@@ -145,9 +170,50 @@ export class PinholeCameraModel {
    * @returns The undistorted pixel, a reference to `out`.
    */
   public undistortNormalized(out: Vector2, point: Readonly<Vector2>, iterations = 5): Vector2 {
-    const { D } = this;
-    const [k1, k2, p1, p2, k3, k4, k5, k6] = D;
+    // Distortion array: [k1, k2, p1, p2, k3, k4, k5, k6]
+    const [k1, k2, p1, p2, k3, k4, k5, k6] = this.D;
 
+    if (this.model === "fisheye" || this.model === "equidistant") {
+      //
+      // ======= FISHEYE/EQUIDISTANT MODEL =======
+      //
+      // For fish-eye, the first 4 entries of D are [k0, k1, k2, k3].
+      // In our array, that means:
+      //   k0 = D[0] = k1
+      //   k1 = D[1] = k2
+      //   k2 = D[2] = p1
+      //   k3 = D[3] = p2
+      const k_0 = k1;
+      const k_1 = k2;
+
+      // The following should be the values, but I didn't get results using the last two coefficients :/
+      // Don't know if I had bad calibration values or something. With just the first two coefficients
+      // got good visual results.
+      // const k_2 = p1;
+      // const k_3 = p2;
+      // Instead setting last order coefficients to 0.0
+      const k_2 = 0.0;
+      const k_3 = 0.0;
+
+      // Original implementation from OpenCV
+      // C++ implementation of undistortPoints: https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fisheye.cpp?utm_source=chatgpt.com#L363
+
+      // Start from the input normalized coords:
+      const x0 = point.x;
+      const y0 = point.y;
+      const r_d = Math.sqrt(x0 * x0 + y0 * y0);
+
+      // If r_d is near zero, no distortion
+      if (r_d < 1e-15) {
+        out.x = x0;
+        out.y = y0;
+        return out;
+      }
+
+      return this.undistortFisheye(out, point, r_d, [k_0, k_1, k_2, k_3]);
+    }
+
+    // Original radial-tangential distortion code
     // The distortion model is non-linear, so we use fixed-point iteration to
     // incrementally iterate to an approximation of the solution. This approach
     // is described at <http://peterabeles.com/blog/?p=73>. The Jacobi method is
@@ -163,6 +229,7 @@ export class PinholeCameraModel {
     // initUndistortRectifyMap and undistortPoints from OpenCV.
     // You can read more about the equations used in the pinhole camera model at
     // <https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#details>
+    // See C++ undistortPoints implementation at: https://github.com/egonSchiele/OpenCV/blob/master/modules/imgproc/src/undistort.cpp#L251
 
     // See also https://github.com/opencv/opencv/blob/192099352577d18b46840cdaf3cbf365e4c6e663/modules/calib3d/src/undistort.dispatch.cpp
 
@@ -204,6 +271,15 @@ export class PinholeCameraModel {
     const { R, D } = this;
     const [k1, k2, p1, p2, k3, k4, k5, k6] = D;
 
+    if (this.model === "fisheye" || this.model === "equidistant") {
+      // for now we just return the point as is
+      // TODO: implement fisheye/equidistant distortion
+      out.x = point.x;
+      out.y = point.y;
+      return out;
+    }
+
+    // Original radial-tangential distortion code
     // Formulae from:
     // <https://docs.opencv.org/2.4/modules/calib3d/doc/camera_calibration_and_3d_reconstruction.html>
 
@@ -354,6 +430,82 @@ export class PinholeCameraModel {
     out.y *= invNorm;
     out.z *= invNorm;
 
+    return out;
+  }
+
+  /**
+   * Undoes camera distortion to map a given coordinate from normalized raw image coordinates to
+   * normalized undistorted coordinates.
+   *
+   * This method uses an iterative optimization algorithm to undo the distortion that was applied to
+   * the original image and yields an approximation of the undistorted point.
+   *
+   * @param out - The output vector to receive the undistorted 2D normalized coordinate.
+   * @param point - The input distorted 2D normalized coordinate.
+   * @param iterations - The number of iterations to use in the iterative optimization.
+   * @returns The undistorted pixel, a reference to `out`.
+   */
+  public undistortFisheye(
+    out: Vector2,
+    point: Vector2,
+    r_d: number,
+    K: [number, number, number, number], // [k0, k1, k2, k3]
+  ): Vector2 {
+    // Default TermCriteria as in C++ implementation, hardcoded default values as we cannot change them in the GUI
+    // Leaving the the same implementation as in C++ if we want in the future to change it
+    // Default it uses EPS and MAX_ITER as term criteria
+    const criteria: TermCriteria = {};
+    let { type, maxCount, epsilon } = criteria;
+    if (type === undefined) {
+      // default to MAX_ITER | EPS
+      type = TermCriteria_MAX_ITER | TermCriteria_EPS;
+    }
+    if (maxCount === undefined) {
+      maxCount = 20; // default
+    }
+    if (epsilon === undefined) {
+      epsilon = 1e-6; // default
+    }
+
+    const useEps = (type & TermCriteria_EPS) !== 0;
+
+    const [k0, k1, k2, k3] = K;
+    const halfPi = Math.PI / 2;
+    const theta_d = Math.min(Math.max(r_d, -halfPi), halfPi);
+
+    let theta = theta_d;
+    let converged = false;
+    let iteration = 0;
+    for (; iteration < maxCount; iteration++) {
+      const t2 = theta * theta;
+      const t4 = t2 * t2;
+      const t6 = t4 * t2;
+      const t8 = t6 * t2;
+
+      const f0 = theta * (1 + k0 * t2 + k1 * t4 + k2 * t6 + k3 * t8) - theta_d;
+      const f0Deriv = 1 + 3 * k0 * t2 + 5 * k1 * t4 + 7 * k2 * t6 + 9 * k3 * t8;
+
+      const step = f0 / f0Deriv;
+      theta -= step;
+
+      if (useEps && Math.abs(step) < epsilon) {
+        converged = true;
+        break;
+      }
+    }
+
+    const scale = Math.tan(theta) / r_d;
+
+    // Check sign flip, as in C++ code. If sign flips, result is invalid
+    const thetaFlipped = (theta_d < 0 && theta > 0) || (theta_d > 0 && theta < 0);
+
+    if ((!useEps || converged) && !thetaFlipped) {
+      out.x = point.x * scale;
+      out.y = point.y * scale;
+    } else {
+      out.x = point.x;
+      out.y = point.y;
+    }
     return out;
   }
 }

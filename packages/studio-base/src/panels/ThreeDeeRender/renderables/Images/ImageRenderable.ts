@@ -547,7 +547,6 @@ function createGeometry(
       pixel.x = ix * segmentWidth;
       pixel.y = iy * segmentHeight;
       projectPixel(p, pixel, cameraModel, settings);
-
       vertices[vOffset + 0] = p.x;
       vertices[vOffset + 1] = p.y;
       vertices[vOffset + 2] = p.z - EPS;
@@ -556,7 +555,6 @@ function createGeometry(
       uvs[uvOffset + 1] = iy / HEIGHT_SEGMENTS;
     }
   }
-
   geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
   geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   geometry.attributes.position!.needsUpdate = true;
