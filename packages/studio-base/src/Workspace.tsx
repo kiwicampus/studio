@@ -46,6 +46,10 @@ import VariablesList from "@foxglove/studio-base/components/VariablesList";
 import { WorkspaceDialogs } from "@foxglove/studio-base/components/WorkspaceDialogs";
 import { useAppContext } from "@foxglove/studio-base/context/AppContext";
 import { useCurrentUser } from "@foxglove/studio-base/context/BaseUserContext";
+import {
+  LayoutData,
+  useCurrentLayoutActions,
+} from "@foxglove/studio-base/context/CurrentLayoutContext";
 import { EventsStore, useEvents } from "@foxglove/studio-base/context/EventsContext";
 import { useExtensionCatalog } from "@foxglove/studio-base/context/ExtensionCatalogContext";
 import { usePlayerSelection } from "@foxglove/studio-base/context/PlayerSelectionContext";
@@ -64,7 +68,6 @@ import WorkspaceContextProvider from "@foxglove/studio-base/providers/WorkspaceC
 import { parseAppURLState } from "@foxglove/studio-base/util/appURLState";
 
 import { useWorkspaceActions } from "./context/Workspace/useWorkspaceActions";
-import {LayoutData, useCurrentLayoutActions} from "@foxglove/studio-base/context/CurrentLayoutContext";
 
 const log = Logger.getLogger(__filename);
 
@@ -364,35 +367,49 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
   }, [props.deepLinks]);
 
   const [unappliedSourceArgs, setUnappliedSourceArgs] = useState(
-    targetUrlState ? { ds: targetUrlState.ds, dsParams: targetUrlState.dsParams, layoutUrl: targetUrlState.layoutUrl } : undefined,
+    targetUrlState
+      ? {
+          ds: targetUrlState.ds,
+          dsParams: targetUrlState.dsParams,
+          layoutUrl: targetUrlState.layoutUrl,
+        }
+      : undefined,
   );
 
   const selectEvent = useEvents(selectSelectEvent);
 
-  const fetchLayoutFromUrl = async (layoutUrl: string) => {
-    if (!layoutUrl) {
-      return;
-    }
-    let res;
-    try {
-      res = await fetch(layoutUrl);
-    } catch {
-      log.debug(`Could not load the layout from ${layoutUrl}`);
-      return;
-    }
-    const parsedState: unknown = JSON.parse(await res.text());
+  const fetchLayoutFromUrl = useCallback(
+    async (layoutUrl: string) => {
+      if (!layoutUrl) {
+        return;
+      }
+      let res;
+      try {
+        res = await fetch(layoutUrl);
+      } catch (err) {
+        log.error(`Could not load the layout from ${layoutUrl}: ${err}`);
+        return;
+      }
 
-    if (typeof parsedState !== "object" || !parsedState) {
-      log.debug(`${layoutUrl} does not contain valid layout JSON`);
-      return;
-    }
+      try {
+        const parsedState: unknown = JSON.parse(await res.text());
+        if (typeof parsedState !== "object" || !parsedState) {
+          log.error(`${layoutUrl} does not contain valid layout JSON`);
+          return;
+        }
 
-    const layoutData = parsedState as LayoutData
-    setCurrentLayout({
-      name: "test-layout",
-      data: layoutData,
-    });
-  }
+        const layoutData = parsedState as LayoutData;
+
+        // Force a fresh layout update by creating a new object
+        setCurrentLayout({
+          data: { ...layoutData },
+        });
+      } catch (err) {
+        log.error(`Failed to parse layout from ${layoutUrl}: ${err}`);
+      }
+    },
+    [setCurrentLayout],
+  );
 
   // Load data source from URL.
   useEffect(() => {
@@ -400,27 +417,33 @@ function WorkspaceContent(props: WorkspaceProps): JSX.Element {
       return;
     }
 
-    let shouldUpdate
+    let shouldUpdate = false;
 
-    // Apply any available data source args
-    if (unappliedSourceArgs.ds) {
-      log.debug("Initialising source from url", unappliedSourceArgs);
-      selectSource(unappliedSourceArgs.ds, {
-        type: "connection",
-        params: unappliedSourceArgs.dsParams,
-      });
-      selectEvent(unappliedSourceArgs.dsParams?.eventId);
-      shouldUpdate = true
-    }
-    // Apply any available datasource args
-    if (unappliedSourceArgs.layoutUrl) {
-      fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
-      shouldUpdate = true
-    }
-    if (shouldUpdate) {
-      setUnappliedSourceArgs({ds: undefined, dsParams: undefined, layoutUrl: undefined});
-    }
-  }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs]);
+    const applySourceArgs = async () => {
+      // Apply any available data source args
+      if (unappliedSourceArgs.ds) {
+        log.debug("Initialising source from url", unappliedSourceArgs);
+        selectSource(unappliedSourceArgs.ds, {
+          type: "connection",
+          params: unappliedSourceArgs.dsParams,
+        });
+        selectEvent(unappliedSourceArgs.dsParams?.eventId);
+        shouldUpdate = true;
+      }
+
+      // Apply any available layout URL
+      if (unappliedSourceArgs.layoutUrl) {
+        await fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
+        shouldUpdate = true;
+      }
+
+      if (shouldUpdate) {
+        setUnappliedSourceArgs({ ds: undefined, dsParams: undefined, layoutUrl: undefined });
+      }
+    };
+
+    void applySourceArgs();
+  }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs, fetchLayoutFromUrl]);
 
   const [unappliedTime, setUnappliedTime] = useState(
     targetUrlState ? { time: targetUrlState.time } : undefined,
