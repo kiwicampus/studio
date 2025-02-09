@@ -90,6 +90,11 @@ export type ImageModeConfig = Partial<ColorModeSettings> & {
   calibrationTopic?: string;
   /** Annotation topicName -> settings, analogous to {@link RendererConfig.topics} */
   annotations?: Record<string, Partial<ImageAnnotationSettings> | undefined>;
+  /** Segmentation mask topic to overlay */
+  segmentationMaskTopic?: string;
+  /** Settings for the segmentation mask overlay */
+  segmentationMaskAlpha?: number;
+
   synchronize?: boolean;
   /** Rotation */
   rotation?: 0 | 90 | 180 | 270;

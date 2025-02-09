@@ -75,6 +75,7 @@ import {
 } from "../../ros";
 import { topicIsConvertibleToSchema } from "../../topicIsConvertibleToSchema";
 import { ICameraHandler } from "../ICameraHandler";
+import { SegmentationMaskRenderable } from "../Images/SegmentationMaskRenderable";
 import { getTopicMatchPrefix, sortPrefixMatchesToFront } from "../Images/topicPrefixMatching";
 import { colorModeSettingsFields } from "../colorMode";
 
@@ -144,6 +145,7 @@ export class ImageMode
   readonly #annotations: ImageAnnotations;
 
   protected imageRenderable: ImageRenderable | undefined;
+  protected segmentationMaskRenderable: SegmentationMaskRenderable | undefined;
   #removeImageTimeout: ReturnType<typeof setTimeout> | undefined;
 
   protected readonly messageHandler: IMessageHandler;
@@ -247,6 +249,26 @@ export class ImageMode
     this.dispatchEvent({ type: "hasModifiedViewChanged" });
   }
 
+  #isValidSegmentationMask(
+    message: unknown,
+  ): message is AnyImage & { data: Uint8Array; width: number; height: number } {
+    const valid =
+      message != undefined &&
+      typeof message === "object" &&
+      "data" in message &&
+      message.data instanceof Uint8Array &&
+      // For raw images
+      (("width" in message &&
+        typeof message.width === "number" &&
+        "height" in message &&
+        typeof message.height === "number") ||
+        // For compressed images
+        ("format" in message && message.format === "png"));
+
+    console.log("isValidSegmentationMask", valid, message);
+    return valid;
+  }
+
   public override getSubscriptions(): readonly AnyRendererSubscription[] {
     const subscriptions: AnyRendererSubscription[] = [
       {
@@ -294,15 +316,35 @@ export class ImageMode
         },
       },
       {
-          type: "schema",
-          schemaNames: COMPRESSED_VIDEO_DATATYPES,
-          subscription: {
+        type: "schema",
+        schemaNames: COMPRESSED_VIDEO_DATATYPES,
+        subscription: {
           handler: this.messageHandler.handleCompressedVideo,
           shouldSubscribe: this.imageShouldSubscribe,
           filterQueue: this.#filterMessageQueue.bind(this),
-          },
+        },
       },
     ];
+
+    const settings = this.getImageModeSettings();
+    // Add subscription for segmentation mask topic
+    console.log("Segmentation mask topic", this.supportedImageSchemas);
+    if (settings.segmentationMaskTopic) {
+      console.log("Adding segmentation mask subscription");
+      subscriptions.push({
+        type: "schema",
+        schemaNames: this.supportedImageSchemas,
+        subscription: {
+          handler: (messageEvent: MessageEvent<AnyImage>) => {
+            if (this.#isValidSegmentationMask(messageEvent.message)) {
+              this.#handleSegmentationMaskChange(messageEvent, messageEvent.message);
+            }
+          },
+          shouldSubscribe: (topic: string) => topic === settings.segmentationMaskTopic,
+        },
+      });
+    }
+
     return subscriptions.concat(this.#annotations.getSubscriptions());
   }
 
@@ -321,6 +363,7 @@ export class ImageMode
     this.renderer.off("topicsChanged", this.#handleTopicsChanged);
     this.#annotations.dispose();
     this.imageRenderable?.dispose();
+    this.segmentationMaskRenderable?.dispose();
     super.dispose();
   }
 
@@ -414,6 +457,8 @@ export class ImageMode
     const {
       imageTopic: imageTopicName,
       calibrationTopic,
+      segmentationMaskTopic,
+      segmentationMaskAlpha,
       synchronize,
       flipHorizontal,
       flipVertical,
@@ -437,13 +482,25 @@ export class ImageMode
       },
     );
 
+    const segmentationMaskTopics: { label: string; value: string | undefined }[] = filterMap(
+      this.renderer.topics ?? [],
+      (topic) => {
+        if (!topicIsConvertibleToSchema(topic, this.supportedImageSchemas)) {
+          return;
+        }
+        return { label: topic.name, value: topic.name };
+      },
+    );
+
     // Sort calibration topics with prefixes matching the image topic to the top.
     if (imageTopicName) {
       sortPrefixMatchesToFront(calibrationTopics, imageTopicName, (option) => option.label);
+      sortPrefixMatchesToFront(segmentationMaskTopics, imageTopicName, (option) => option.label);
     }
 
-    // add unselected camera calibration option
+    // add unselected options
     calibrationTopics.unshift({ label: "None", value: undefined });
+    segmentationMaskTopics.unshift({ label: "None", value: undefined });
 
     const imageTopicExists =
       !imageTopicName || imageTopics.some((topic) => topic.value === imageTopicName);
@@ -506,6 +563,25 @@ export class ImageMode
       options: calibrationTopics,
       error: calibrationTopicError,
     };
+    fields.segmentationMaskTopic = {
+      label: "Segmentation Mask",
+      input: "select",
+      value: segmentationMaskTopic,
+      options: segmentationMaskTopics,
+    };
+
+    if (segmentationMaskTopic) {
+      fields.segmentationMaskAlpha = {
+        label: "Segmentation Mask Alpha",
+        input: "number",
+        min: 0,
+        max: 1,
+        step: 0.1,
+        precision: 2,
+        value: segmentationMaskAlpha ?? 0.5,
+      };
+    }
+
     fields.synchronize = {
       input: "boolean",
       label: "Sync annotations",
@@ -586,6 +662,9 @@ export class ImageMode
     }
 
     const prevImageModeConfig = this.getImageModeSettings();
+    // console.log("prevImageModeConfig", prevImageModeConfig);
+    // console.log("path", path);
+    // console.log("value", value);
     this.saveSetting(path, value);
     const config = this.getImageModeSettings();
 
@@ -612,6 +691,30 @@ export class ImageMode
       if (imageTopic) {
         this.setImageTopic(imageTopic);
       }
+    }
+
+    const segmentationMaskTopicChanged =
+      config.segmentationMaskTopic !== prevImageModeConfig.segmentationMaskTopic;
+    if (segmentationMaskTopicChanged) {
+      if (config.segmentationMaskTopic) {
+        const maskTopic = this.renderer.topics?.find(
+          (topic) => topic.name === config.segmentationMaskTopic,
+        );
+        if (maskTopic) {
+          this.setSegmentationMaskTopic(maskTopic);
+        }
+      } else {
+        this.#removeSegmentationMaskRenderable();
+      }
+    }
+    const segmentationMaskAlphaChanged =
+      config.segmentationMaskAlpha !== prevImageModeConfig.segmentationMaskAlpha;
+    if (segmentationMaskAlphaChanged && this.segmentationMaskRenderable) {
+      this.segmentationMaskRenderable.updateSettings({
+        alpha: config.segmentationMaskAlpha ?? 0.5,
+        useRandomColors: true,
+        colorMap: {},
+      });
     }
 
     if (config.rotation !== prevImageModeConfig.rotation) {
@@ -1046,6 +1149,64 @@ export class ImageMode
       },
     ];
   }
+
+  protected setSegmentationMaskTopic(maskTopic: Topic): void {
+    this.#removeSegmentationMaskRenderable();
+
+    this.renderer.updateConfig((draft) => {
+      draft.imageMode.segmentationMaskTopic = maskTopic.name;
+      if (!draft.imageMode.segmentationMaskAlpha) {
+        draft.imageMode.segmentationMaskAlpha = 0.5;
+      }
+    });
+  }
+
+  #removeSegmentationMaskRenderable(): void {
+    this.segmentationMaskRenderable?.dispose();
+    this.segmentationMaskRenderable?.removeFromParent();
+    this.segmentationMaskRenderable = undefined;
+  }
+
+  #handleSegmentationMaskChange = (
+    messageEvent: PartialMessageEvent<AnyImage>,
+    image: AnyImage,
+  ): void => {
+    console.log("handleSegmentationMaskChange called", { topic: messageEvent.topic, image });
+    const topic = messageEvent.topic;
+    const frameId = "header" in image ? image.header.frame_id : image.frame_id;
+    const receiveTime = toNanoSec(messageEvent.receiveTime);
+    const messageTime = toNanoSec("header" in image ? image.header.stamp : image.timestamp);
+
+    const settings = this.getImageModeSettings();
+    console.log("Segmentation mask settings", settings.segmentationMaskAlpha);
+
+    if (!this.segmentationMaskRenderable) {
+      console.log("Creating new SegmentationMaskRenderable");
+      const renderable = new SegmentationMaskRenderable(topic, this.renderer, {
+        topic,
+        settings: {
+          visible: true,
+          alpha: settings.segmentationMaskAlpha ?? 0.5,
+          useRandomColors: true,
+          colorMap: {},
+        },
+        receiveTime,
+        messageTime,
+        firstMessageTime: messageTime,
+        frameId: this.renderer.normalizeFrameId(frameId),
+        pose: makePose(),
+        settingsPath: ["imageMode", "segmentationMaskAlpha"],
+      });
+
+      renderable.setImage(image);
+      this.add(renderable as unknown as THREE.Object3D);
+      this.segmentationMaskRenderable = renderable;
+      console.log("SegmentationMaskRenderable created and added to scene");
+    } else {
+      console.log("Updating existing SegmentationMaskRenderable");
+      this.segmentationMaskRenderable.setImage(image);
+    }
+  };
 }
 
 const createFallbackCameraInfoForImage = (options: {
