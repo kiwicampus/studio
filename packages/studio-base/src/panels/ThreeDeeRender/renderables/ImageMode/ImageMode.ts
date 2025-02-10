@@ -834,6 +834,10 @@ export class ImageMode
         this.#updateFallbackCameraModel(renderable);
         this.#updateViewAndRenderables();
       }
+      // Pass the texture to the segmentation mask renderable if it exists
+      if (this.segmentationMaskRenderable && renderable.userData.texture) {
+        this.segmentationMaskRenderable.setImageRenderable(renderable.userData.texture);
+      }
     });
   };
 
