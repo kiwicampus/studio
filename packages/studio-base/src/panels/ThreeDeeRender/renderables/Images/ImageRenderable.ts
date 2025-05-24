@@ -36,6 +36,9 @@ export interface ImageRenderableSettings extends Partial<ColorModeSettings> {
   distance: number;
   planarProjectionFactor: number;
   color: string;
+  // Added for segmentation mask
+  segmentationMaskTopic: string | undefined;
+  segmentationMaskOpacity: number;
 }
 
 const DEFAULT_DISTANCE = 1;
@@ -47,6 +50,9 @@ export const IMAGE_RENDERABLE_DEFAULT_SETTINGS: ImageRenderableSettings = {
   distance: DEFAULT_DISTANCE,
   planarProjectionFactor: DEFAULT_PLANAR_PROJECTION_FACTOR,
   color: "#ffffff",
+  // Added for segmentation mask
+  segmentationMaskTopic: undefined,
+  segmentationMaskOpacity: 0.5, // Default opacity
 };
 
 const IMAGE_FORMATS = new Set(["jpeg", "jpg", "png", "webp"]);
@@ -60,10 +66,81 @@ export type ImageUserData = BaseUserData & {
   cameraModel: PinholeCameraModel | undefined;
   image: AnyImage | undefined;
   texture: THREE.Texture | undefined;
-  material: THREE.MeshBasicMaterial | undefined;
+  material: THREE.ShaderMaterial | THREE.MeshBasicMaterial | undefined; // Can be ShaderMaterial for masks
   geometry: THREE.PlaneGeometry | undefined;
   mesh: THREE.Mesh | undefined;
+  // Added for segmentation mask
+  segmentationMaskImage: AnyImage | undefined; // The raw mask image
+  segmentationMaskIndexTexture: THREE.DataTexture | undefined; // Texture from raw mask data (indices)
+  segmentationMaskColorMapTexture: THREE.DataTexture | undefined; // Texture for color mapping
+  maxMaskIndex: number; // Max index found in the current mask
+  classColorMap: Map<number, THREE.Color>; // Stores colors for class indices
 };
+
+// Helper to create a 1x1 placeholder texture
+function createPlaceholderTexture(color = new THREE.Color(0x000000), alpha = 0.0): THREE.DataTexture {
+  const data = new Uint8Array([color.r * 255, color.g * 255, color.b * 255, alpha * 255]);
+  const texture = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+const defaultPlaceholderTexture = createPlaceholderTexture();
+const fullyTransparentPlaceholderTexture = createPlaceholderTexture(new THREE.Color(0x000000), 0.0);
+
+
+// Shaders for segmentation mask overlay
+const vertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const fragmentShader = `
+  varying vec2 vUv;
+  uniform sampler2D uMainTexture;
+  uniform sampler2D uMaskIndexTexture;      // Texture with class indices (e.g., R channel)
+  uniform sampler2D uMaskColorMapTexture; // 1D texture mapping index to color
+  uniform float uMaskOpacity;
+  uniform float uMaxMaskIndex;            // Max index value in uMaskIndexTexture, for normalization
+  uniform bool  uHasMask;                 // Indicates if a valid mask is present
+  uniform vec3 uTintColor;                // Tint color from original settings.color
+  uniform float uTintAlpha;               // Alpha from original settings.color (used for main image opacity)
+
+
+  void main() {
+    vec4 mainColor = texture2D(uMainTexture, vUv);
+    mainColor.rgb *= uTintColor; // Apply original tint
+    mainColor.a *= uTintAlpha;   // Apply original alpha
+
+    if (!uHasMask || uMaskOpacity == 0.0) {
+      gl_FragColor = mainColor;
+      return;
+    }
+
+    // Sample the mask index (assuming it's in the R channel of uMaskIndexTexture)
+    // The mask index texture should be configured with THREE.NearestFilter
+    float maskIndex = texture2D(uMaskIndexTexture, vUv).r * 255.0; // Assuming uMaskIndexTexture stores raw uint8 indices
+
+    if (maskIndex > uMaxMaskIndex) { // If index is out of bounds for the colormap
+        gl_FragColor = mainColor;
+        return;
+    }
+
+    // Normalize the index to use as a UV coordinate for the color map texture
+    // Add 0.5 to sample the center of the texel.
+    float normalizedIndexU = (maskIndex + 0.5) / (uMaxMaskIndex + 1.0);
+    vec2 colorMapUv = vec2(normalizedIndexU, 0.5);
+
+    vec4 maskMappedColor = texture2D(uMaskColorMapTexture, colorMapUv);
+
+    // Blend the main image color with the mask color
+    // The mask color should be fully opaque for mixing, then apply overall opacity.
+    gl_FragColor = mix(mainColor, vec4(maskMappedColor.rgb, mainColor.a), uMaskOpacity);
+  }
+`;
 
 export class ImageRenderable extends Renderable<ImageUserData> {
   // A lazily instantiated player for compressed video
@@ -92,7 +169,20 @@ export class ImageRenderable extends Renderable<ImageUserData> {
   #disposed = false;
 
   public constructor(topicName: string, renderer: IRenderer, userData: ImageUserData) {
-    super(topicName, renderer, userData);
+    super(topicName, renderer, {
+      ...userData,
+      // Initialize new fields for segmentation mask
+      segmentationMaskTopic: userData.settings.segmentationMaskTopic,
+      segmentationMaskOpacity: userData.settings.segmentationMaskOpacity,
+      segmentationMaskImage: undefined,
+      segmentationMaskIndexTexture: undefined,
+      segmentationMaskColorMapTexture: undefined,
+      maxMaskIndex: 0,
+      classColorMap: new Map<number, THREE.Color>(),
+    });
+
+    // Ensure material is initialized (it will be MeshBasicMaterial by default)
+    this.#initMaterial();
   }
 
   protected isDisposed(): boolean {
@@ -106,8 +196,21 @@ export class ImageRenderable extends Renderable<ImageUserData> {
   public override dispose(): void {
     this.#disposed = true;
     this.userData.texture?.dispose();
-    this.userData.material?.dispose();
+    if (this.userData.material) {
+      if (this.userData.material instanceof THREE.ShaderMaterial) {
+        // Dispose uniforms if they are textures
+        Object.values(this.userData.material.uniforms).forEach((uniform) => {
+          if (uniform.value instanceof THREE.Texture) {
+            uniform.value.dispose();
+          }
+        });
+      }
+      this.userData.material.dispose();
+    }
     this.userData.geometry?.dispose();
+    // Dispose segmentation mask textures
+    this.userData.segmentationMaskIndexTexture?.dispose();
+    this.userData.segmentationMaskColorMapTexture?.dispose();
     this.decoder?.terminate();
     super.dispose();
   }
@@ -165,6 +268,26 @@ export class ImageRenderable extends Renderable<ImageUserData> {
       this.#materialNeedsUpdate = true;
     }
 
+    // Handle segmentation mask settings changes
+    if (
+      newSettings.segmentationMaskTopic !== prevSettings.segmentationMaskTopic ||
+      newSettings.segmentationMaskOpacity !== prevSettings.segmentationMaskOpacity
+    ) {
+      // If the topic changes, we might need to clear the old mask image/texture
+      if (newSettings.segmentationMaskTopic !== prevSettings.segmentationMaskTopic) {
+        this.userData.segmentationMaskImage = undefined;
+        this.userData.segmentationMaskIndexTexture?.dispose();
+        this.userData.segmentationMaskIndexTexture = undefined;
+        this.userData.segmentationMaskColorMapTexture?.dispose();
+        this.userData.segmentationMaskColorMapTexture = undefined;
+        this.userData.maxMaskIndex = 0;
+        this.userData.classColorMap.clear();
+        // Future: Trigger re-subscription if necessary (likely handled by Images.ts)
+      }
+      // We need to update the material or shader if opacity changes, mark for update.
+      this.#materialNeedsUpdate = true;
+    }
+
     if (
       prevSettings.colorMode !== newSettings.colorMode ||
       prevSettings.flatColor !== newSettings.flatColor ||
@@ -183,6 +306,9 @@ export class ImageRenderable extends Renderable<ImageUserData> {
     }
 
     this.userData.settings = newSettings;
+    // Update userData directly with new segmentation settings
+    this.userData.segmentationMaskTopic = newSettings.segmentationMaskTopic;
+    this.userData.segmentationMaskOpacity = newSettings.segmentationMaskOpacity;
   }
 
   public setImage(image: AnyImage, resizeWidth?: number, onDecoded?: () => void): void {
@@ -396,48 +522,114 @@ export class ImageRenderable extends Renderable<ImageUserData> {
   }
 
   #updateMaterial(): void {
-    if (!this.userData.material) {
-      this.#initMaterial();
-      this.#meshNeedsUpdate = true;
-    }
-    const material = this.userData.material!;
+    const useShaderMaterial =
+      this.userData.segmentationMaskImage && this.userData.settings.segmentationMaskOpacity > 0;
 
-    const texture = this.userData.texture;
-    if (texture) {
-      material.map = texture;
-    }
+    if (useShaderMaterial) {
+      if (!(this.userData.material instanceof THREE.ShaderMaterial)) {
+        this.userData.material?.dispose(); // Dispose old MeshBasicMaterial
+        this.#initShaderMaterial();
+        this.#meshNeedsUpdate = true; // Mesh needs to be updated with new material instance
+      }
 
-    tempColor = stringToRgba(tempColor, this.userData.settings.color);
-    const transparent = tempColor.a < 1;
-    const color = new THREE.Color(tempColor.r, tempColor.g, tempColor.b);
-    material.color.set(color);
-    material.opacity = tempColor.a;
-    material.transparent = transparent;
-    material.depthWrite = !transparent;
+      const material = this.userData.material as THREE.ShaderMaterial;
+      material.uniforms.uMainTexture.value = this.userData.texture ?? defaultPlaceholderTexture;
+      material.uniforms.uMaskIndexTexture.value = this.userData.segmentationMaskIndexTexture ?? fullyTransparentPlaceholderTexture;
+      material.uniforms.uMaskColorMapTexture.value = this.userData.segmentationMaskColorMapTexture ?? fullyTransparentPlaceholderTexture;
+      material.uniforms.uMaskOpacity.value = this.userData.settings.segmentationMaskOpacity;
+      material.uniforms.uMaxMaskIndex.value = this.userData.maxMaskIndex;
+      material.uniforms.uHasMask.value = this.userData.segmentationMaskIndexTexture != undefined && this.userData.segmentationMaskColorMapTexture != undefined;
 
-    if (this.#renderBehindScene) {
-      material.depthWrite = false;
-      material.depthTest = false;
+      stringToRgba(tempColor, this.userData.settings.color);
+      material.uniforms.uTintColor.value.setRGB(tempColor.r, tempColor.g, tempColor.b);
+      material.uniforms.uTintAlpha.value = tempColor.a;
+      
+      const transparent = tempColor.a < 1 || this.userData.settings.segmentationMaskOpacity < 1;
+      material.transparent = transparent;
+      material.depthWrite = !transparent;
+
+
     } else {
-      material.depthTest = true;
-    }
+      if (this.userData.material instanceof THREE.ShaderMaterial) {
+        // Dispose ShaderMaterial and its textures if switching back to MeshBasicMaterial
+        Object.values(this.userData.material.uniforms).forEach((uniform) => {
+          if (uniform.value instanceof THREE.Texture && uniform.value !== defaultPlaceholderTexture && uniform.value !== fullyTransparentPlaceholderTexture) {
+            // Do not dispose shared placeholder textures
+          }
+        });
+        this.userData.material.dispose();
+        this.userData.material = undefined; // Force re-initialization
+      }
+      if (!this.userData.material) {
+        this.#initBasicMaterial();
+        this.#meshNeedsUpdate = true; // Mesh needs to be updated with new material instance
+      }
+      
+      const material = this.userData.material as THREE.MeshBasicMaterial;
+      material.map = this.userData.texture ?? null;
 
-    material.needsUpdate = true;
+      stringToRgba(tempColor, this.userData.settings.color);
+      const transparent = tempColor.a < 1;
+      material.color.setRGB(tempColor.r, tempColor.g, tempColor.b);
+      material.opacity = tempColor.a;
+      material.transparent = transparent;
+      material.depthWrite = !transparent;
+    }
+    
+    const currentMaterial = this.userData.material!;
+    if (this.#renderBehindScene) {
+      currentMaterial.depthWrite = false;
+      currentMaterial.depthTest = false;
+    } else {
+      currentMaterial.depthTest = true;
+    }
+    currentMaterial.needsUpdate = true;
   }
 
-  #initMaterial(): void {
+  #initBasicMaterial(): void {
     stringToRgba(tempColor, this.userData.settings.color);
     const transparent = tempColor.a < 1;
     const color = new THREE.Color(tempColor.r, tempColor.g, tempColor.b);
     this.userData.material = new THREE.MeshBasicMaterial({
-      name: `${this.userData.topic}:Material`,
+      name: `${this.userData.topic}:BasicMaterial`,
       color,
       side: THREE.DoubleSide,
       opacity: tempColor.a,
       transparent,
       depthWrite: !transparent,
+      map: this.userData.texture ?? null,
     });
   }
+
+  #initShaderMaterial(): void {
+    stringToRgba(tempColor, this.userData.settings.color);
+    const transparent = tempColor.a < 1 || this.userData.settings.segmentationMaskOpacity < 1;
+
+    this.userData.material = new THREE.ShaderMaterial({
+      name: `${this.userData.topic}:ShaderMaterial`,
+      vertexShader,
+      fragmentShader,
+      uniforms: {
+        uMainTexture: { value: this.userData.texture ?? defaultPlaceholderTexture },
+        uMaskIndexTexture: { value: this.userData.segmentationMaskIndexTexture ?? fullyTransparentPlaceholderTexture },
+        uMaskColorMapTexture: { value: this.userData.segmentationMaskColorMapTexture ?? fullyTransparentPlaceholderTexture },
+        uMaskOpacity: { value: this.userData.settings.segmentationMaskOpacity },
+        uMaxMaskIndex: { value: this.userData.maxMaskIndex },
+        uHasMask: { value: false }, // Will be updated in #updateMaterial
+        uTintColor: { value: new THREE.Color(tempColor.r, tempColor.g, tempColor.b) },
+        uTintAlpha: { value: tempColor.a },
+      },
+      side: THREE.DoubleSide,
+      transparent,
+      depthWrite: !transparent,
+    });
+  }
+  
+  #initMaterial(): void {
+    // Default to basic material, #updateMaterial will switch if needed
+    this.#initBasicMaterial();
+  }
+
 
   #updateMesh(): void {
     assert(this.userData.geometry, "Geometry must be set before mesh can be updated or created");
@@ -470,6 +662,100 @@ export class ImageRenderable extends Renderable<ImageUserData> {
   protected removeError(key: string): void {
     this.renderer.settings.errors.remove(IMAGE_TOPIC_PATH, key);
     this.renderer.settings.errors.removeFromTopic(this.userData.topic, key);
+  }
+
+  public setSegmentationMaskImage(image: AnyImage): void {
+    this.userData.segmentationMaskImage = image;
+
+    if (!("encoding" in image && (image.encoding === "mono8" || image.encoding === "8UC1"))) {
+      log.error(`Unsupported segmentation mask encoding: ${"encoding" in image ? image.encoding : "unknown"}. Only mono8/8UC1 is currently supported.`);
+      this.userData.segmentationMaskIndexTexture?.dispose();
+      this.userData.segmentationMaskIndexTexture = undefined;
+      this.userData.segmentationMaskColorMapTexture?.dispose();
+      this.userData.segmentationMaskColorMapTexture = undefined;
+      this.userData.maxMaskIndex = 0;
+      this.#materialNeedsUpdate = true;
+      this.update();
+      this.renderer.queueAnimationFrame();
+      return;
+    }
+
+    const maskData = image.data; // Assuming Uint8Array for mono8
+    const width = image.width;
+    const height = image.height;
+
+    // Create/Update segmentationMaskIndexTexture (raw mask indices)
+    if (this.userData.segmentationMaskIndexTexture) {
+      if (this.userData.segmentationMaskIndexTexture.image.width !== width || this.userData.segmentationMaskIndexTexture.image.height !== height) {
+        this.userData.segmentationMaskIndexTexture.dispose();
+        this.userData.segmentationMaskIndexTexture = undefined;
+      }
+    }
+    if (!this.userData.segmentationMaskIndexTexture) {
+      this.userData.segmentationMaskIndexTexture = new THREE.DataTexture(
+        maskData, width, height, THREE.RedFormat, THREE.UnsignedByteType
+      );
+      this.userData.segmentationMaskIndexTexture.minFilter = THREE.NearestFilter;
+      this.userData.segmentationMaskIndexTexture.magFilter = THREE.NearestFilter;
+      this.userData.segmentationMaskIndexTexture.needsUpdate = true;
+    } else {
+      this.userData.segmentationMaskIndexTexture.image.data = maskData;
+      this.userData.segmentationMaskIndexTexture.needsUpdate = true;
+    }
+    
+    // Find unique class indices and max index
+    let currentMaxIndex = 0;
+    const uniqueIndices = new Set<number>();
+    for (let i = 0; i < maskData.length; i++) {
+      const index = maskData[i]!;
+      uniqueIndices.add(index);
+      if (index > currentMaxIndex) {
+        currentMaxIndex = index;
+      }
+    }
+    this.userData.maxMaskIndex = currentMaxIndex;
+
+    // Generate colors for new indices
+    uniqueIndices.forEach(index => {
+      if (!this.userData.classColorMap.has(index)) {
+        this.userData.classColorMap.set(index, new THREE.Color().setHSL(Math.random(), 0.7, 0.5));
+      }
+    });
+    
+    // Create/Update segmentationMaskColorMapTexture
+    const colorMapWidth = this.userData.maxMaskIndex + 1;
+    const colorMapData = new Uint8Array(colorMapWidth * 3); // RGB
+    for (let i = 0; i <= this.userData.maxMaskIndex; i++) {
+      const color = this.userData.classColorMap.get(i) ?? new THREE.Color(0x000000); // Default to black if not found
+      colorMapData[i * 3 + 0] = color.r * 255;
+      colorMapData[i * 3 + 1] = color.g * 255;
+      colorMapData[i * 3 + 2] = color.b * 255;
+    }
+
+    if (this.userData.segmentationMaskColorMapTexture) {
+       // If width changed, dispose and recreate
+      if (this.userData.segmentationMaskColorMapTexture.image.width !== colorMapWidth) {
+        this.userData.segmentationMaskColorMapTexture.dispose();
+        this.userData.segmentationMaskColorMapTexture = undefined;
+      }
+    }
+
+    if (!this.userData.segmentationMaskColorMapTexture) {
+      this.userData.segmentationMaskColorMapTexture = new THREE.DataTexture(
+        colorMapData, colorMapWidth, 1, THREE.RGBFormat, THREE.UnsignedByteType
+      );
+      this.userData.segmentationMaskColorMapTexture.minFilter = THREE.NearestFilter;
+      this.userData.segmentationMaskColorMapTexture.magFilter = THREE.NearestFilter;
+    } else {
+      this.userData.segmentationMaskColorMapTexture.image.data = colorMapData;
+      // Important: Update width/height if they changed, though height is fixed at 1
+      this.userData.segmentationMaskColorMapTexture.image.width = colorMapWidth;
+    }
+    this.userData.segmentationMaskColorMapTexture.needsUpdate = true;
+
+    this.#materialNeedsUpdate = true;
+    this.update();
+    this.renderer.queueAnimationFrame();
   }
 }
 

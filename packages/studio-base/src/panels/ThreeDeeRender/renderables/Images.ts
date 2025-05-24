@@ -57,6 +57,8 @@ export type LayerSettingsImage = BaseSettings & {
   distance: number;
   planarProjectionFactor: number;
   color: string;
+  segmentationMaskTopic: string | undefined;
+  segmentationMaskOpacity: number;
 };
 
 const DEFAULT_BITMAP_WIDTH = 512;
@@ -82,6 +84,12 @@ export class Images extends SceneExtension<ImageRenderable> {
    */
   #cameraInfoByTopic = new Map<string, CameraInfo>();
 
+  /**
+   * A bi-directional mapping between segmentation mask topics and image topics.
+   * Used to find which ImageRenderables need updating when a mask message arrives.
+   */
+  #segmentationMaskToImageTopics = new MultiMap<string, string>();
+
   protected supportedImageSchemas = ALL_SUPPORTED_IMAGE_SCHEMAS;
 
   public constructor(renderer: IRenderer, name: string = Images.extensionId) {
@@ -96,7 +104,7 @@ export class Images extends SceneExtension<ImageRenderable> {
   }
 
   public override getSubscriptions(): readonly AnyRendererSubscription[] {
-    return [
+    const subscriptions: AnyRendererSubscription[] = [
       {
         type: "schema",
         schemaNames: ALL_CAMERA_INFO_SCHEMAS,
@@ -105,44 +113,34 @@ export class Images extends SceneExtension<ImageRenderable> {
           shouldSubscribe: this.#cameraInfoShouldSubscribe,
         },
       },
-      {
-        type: "schema",
-        schemaNames: ROS_IMAGE_DATATYPES,
-        subscription: { handler: this.#handleRosRawImage, filterQueue: onlyLastByTopicMessage },
-      },
-      {
-        type: "schema",
-        schemaNames: ROS_COMPRESSED_IMAGE_DATATYPES,
-        subscription: {
-          handler: this.#handleRosCompressedImage,
-          filterQueue: onlyLastByTopicMessage,
-        },
-      },
-      {
-        type: "schema",
-        schemaNames: RAW_IMAGE_DATATYPES,
-        subscription: {
-          handler: this.#handleRawImage,
-          filterQueue: onlyLastByTopicMessage,
-        },
-      },
-      {
-        type: "schema",
-        schemaNames: COMPRESSED_IMAGE_DATATYPES,
-        subscription: {
-          handler: this.#handleCompressedImage,
-          filterQueue: onlyLastByTopicMessage,
-        },
-      },
-      {
-        type: "schema",
-        schemaNames: COMPRESSED_VIDEO_DATATYPES,
-        subscription: {
-          handler: this.#handleCompressedVideo,
-          filterQueue: onlyLastByTopicMessage,
-        },
-      },
     ];
+
+    // Helper to create image subscriptions
+    const createImageSubscription = (
+      schemaNames: readonly string[],
+      normalizer: (message: AnyImage) => AnyImage,
+    ): AnyRendererSubscription => ({
+      type: "schema",
+      schemaNames,
+      subscription: {
+        handler: (messageEvent: PartialMessageEvent<AnyImage>) => {
+          // Normalize and route the message
+          this.#handleAnyImageMessage(messageEvent, normalizer(messageEvent.message));
+        },
+        shouldSubscribe: this.#imageShouldSubscribe, // Unified subscription logic
+        filterQueue: onlyLastByTopicMessage,
+      },
+    });
+
+    subscriptions.push(
+      createImageSubscription(ROS_IMAGE_DATATYPES, normalizeRosImage),
+      createImageSubscription(ROS_COMPRESSED_IMAGE_DATATYPES, normalizeRosCompressedImage),
+      createImageSubscription(RAW_IMAGE_DATATYPES, normalizeRawImage),
+      createImageSubscription(COMPRESSED_IMAGE_DATATYPES, normalizeCompressedImage),
+      createImageSubscription(COMPRESSED_VIDEO_DATATYPES, normalizeCompressedVideo),
+    );
+
+    return subscriptions;
   }
 
   /**
@@ -205,6 +203,22 @@ export class Images extends SceneExtension<ImageRenderable> {
           value: config.planarProjectionFactor,
         },
         color: { label: t("threeDee:color"), input: "rgba", value: config.color },
+        segmentationMaskTopic: {
+          label: t("threeDee:segmentationMaskTopic", "Segmentation Mask Topic"),
+          input: "select",
+          options: cameraInfoOptions, // For now, use the same options as cameraInfo
+          value: config.segmentationMaskTopic,
+        },
+        segmentationMaskOpacity: {
+          label: t("threeDee:segmentationMaskOpacity", "Segmentation Mask Opacity"),
+          input: "number",
+          min: 0,
+          max: 1,
+          step: 0.1,
+          precision: 2,
+          placeholder: String(0.5), // Default value
+          value: config.segmentationMaskOpacity,
+        },
       };
 
       entries.push({
@@ -228,40 +242,51 @@ export class Images extends SceneExtension<ImageRenderable> {
     }
 
     const imageTopic = path[1]!;
-    const prevSettings = this.renderer.config.topics[imageTopic] as
-      | Partial<LayerSettingsImage>
-      | undefined;
+    const imageTopic = path[1]!;
+    const property = path[2] as keyof LayerSettingsImage | undefined;
+
+    const prevSettings = this.renderer.config.topics[imageTopic] as Partial<LayerSettingsImage> | undefined;
     const prevCameraInfoTopic = prevSettings?.cameraInfoTopic;
+    const prevSegmentationMaskTopic = prevSettings?.segmentationMaskTopic;
 
     this.saveSetting(path, action.payload.value);
 
-    const settings = this.renderer.config.topics[imageTopic] as
-      | Partial<LayerSettingsImage>
-      | undefined;
+    const settings = this.renderer.config.topics[imageTopic] as Partial<LayerSettingsImage> | undefined;
     const cameraInfoTopic = settings?.cameraInfoTopic;
+    const segmentationMaskTopic = settings?.segmentationMaskTopic;
 
-    // Add this camera_info_topic -> image_topic mapping
-    if (cameraInfoTopic !== prevCameraInfoTopic && cameraInfoTopic != undefined) {
-      this.#cameraInfoToImageTopics.set(cameraInfoTopic, imageTopic);
+    // Update cameraInfoTopic mapping
+    if (cameraInfoTopic !== prevCameraInfoTopic) {
+      if (prevCameraInfoTopic != undefined) {
+        this.#cameraInfoToImageTopics.delete(prevCameraInfoTopic, imageTopic);
+      }
+      if (cameraInfoTopic != undefined) {
+        this.#cameraInfoToImageTopics.set(cameraInfoTopic, imageTopic);
+      }
     }
 
+    // Update segmentationMaskTopic mapping
+    if (segmentationMaskTopic !== prevSegmentationMaskTopic) {
+      if (prevSegmentationMaskTopic != undefined) {
+        this.#segmentationMaskToImageTopics.delete(prevSegmentationMaskTopic, imageTopic);
+      }
+      if (segmentationMaskTopic != undefined) {
+        this.#segmentationMaskToImageTopics.set(segmentationMaskTopic, imageTopic);
+      }
+    }
+    
     const renderable = this.renderables.get(imageTopic);
-    if (!renderable) {
-      return;
+    if (renderable) {
+      renderable.setSettings({ ...IMAGE_RENDERABLE_DEFAULT_SETTINGS, ...settings });
     }
 
-    renderable.setSettings({ ...IMAGE_RENDERABLE_DEFAULT_SETTINGS, ...settings });
-
-    // The camera info topic changed for our renderable
-    // Remove the previous camera_info_topic -> image_topic mapping
-    if (prevCameraInfoTopic != undefined) {
-      this.#cameraInfoToImageTopics.delete(prevCameraInfoTopic, imageTopic);
+    // If visibility, cameraInfoTopic or segmentationMaskTopic changed, we might need to update subscriptions
+    if (property === "visible" || property === "cameraInfoTopic" || property === "segmentationMaskTopic") {
+      this.renderer.updateSubscriptions();
     }
-
-    // apply camera info to new renderable
-    if (!cameraInfoTopic) {
-      return;
-    }
+    
+    // Apply camera info if it's set and renderable exists
+    if (renderable && cameraInfoTopic) {
 
     // Look up the camera info for our image topic
     const cameraInfo = this.#cameraInfoByTopic.get(cameraInfoTopic);
@@ -279,101 +304,137 @@ export class Images extends SceneExtension<ImageRenderable> {
 
   #cameraInfoShouldSubscribe = (cameraInfoTopic: string): boolean => {
     // Iterate over each topic config and check if it has a cameraInfoTopic setting that matches
-    // the cameraInfoTopic we might want to turn on. If it does and the topic is visible, return
-    // true so we know to subscribe.
+    // the cameraInfoTopic we might want to turn on. If it does and the topic is visible, return true.
     for (const topicConfig of Object.values(this.renderer.config.topics)) {
-      const maybeImageConfig = topicConfig as Partial<LayerSettingsImage>;
-      if (
-        maybeImageConfig.cameraInfoTopic === cameraInfoTopic &&
-        maybeImageConfig.visible === true
-      ) {
+      const imageConfig = topicConfig as Partial<LayerSettingsImage>;
+      if (imageConfig.cameraInfoTopic === cameraInfoTopic && imageConfig.visible === true) {
         return true;
       }
     }
-
     return false;
   };
 
-  #handleRosRawImage = (messageEvent: PartialMessageEvent<RosImage>): void => {
-    this.handleImage(messageEvent, normalizeRosImage(messageEvent.message));
+  #imageShouldSubscribe = (topicToSubscribe: string): boolean => {
+    // Iterate over each configured image layer. A topic should be subscribed to if:
+    // 1. It's the main image topic for a visible layer.
+    // 2. It's the segmentationMaskTopic for a visible layer.
+    for (const [imageTopicName, config] of Object.entries(this.renderer.config.topics)) {
+      // Filter out non-image topics from config (e.g. if other extensions store topic config)
+      if (!this.renderables.has(imageTopicName) && !topicIsConvertibleToSchema(this.renderer.topicFromName(imageTopicName), this.supportedImageSchemas)) {
+          // If we don't have a renderable for this topic yet, and it's not an image schema, skip.
+          // This check helps ensure we only consider image layers.
+          // A more robust way might be to check if `config` has image-specific settings.
+          if(!((config as Partial<LayerSettingsImage>).cameraInfoTopic !== undefined || (config as Partial<LayerSettingsImage>).distance !== undefined)){
+            continue;
+          }
+      }
+
+      const imageConfig = config as Partial<LayerSettingsImage>;
+      if (imageConfig.visible === true) {
+        if (imageTopicName === topicToSubscribe) {
+          return true; // Main image topic for a visible layer
+        }
+        if (imageConfig.segmentationMaskTopic === topicToSubscribe) {
+          return true; // Segmentation mask topic for a visible layer
+        }
+      }
+    }
+    return false;
   };
+  
+  #handleAnyImageMessage = (
+    messageEvent: PartialMessageEvent<AnyImage>,
+    normalizedImage: AnyImage,
+  ): void => {
+    const topic = messageEvent.topic;
 
-  #handleRosCompressedImage = (messageEvent: PartialMessageEvent<RosCompressedImage>): void => {
-    this.handleImage(messageEvent, normalizeRosCompressedImage(messageEvent.message));
+    // Check if this topic is a main image for a renderable
+    const mainRenderable = this.renderables.get(topic);
+    if (mainRenderable) {
+      this.#handleMainImage(messageEvent, normalizedImage, mainRenderable);
+    }
+
+    // Check if this topic is a segmentation mask for any renderables
+    const imageTopicsUsingThisMask = this.#segmentationMaskToImageTopics.get(topic);
+    if (imageTopicsUsingThisMask) {
+      for (const imageTopic of imageTopicsUsingThisMask) {
+        const renderable = this.renderables.get(imageTopic);
+        if (renderable && renderable.userData.settings.segmentationMaskTopic === topic) {
+          renderable.setSegmentationMaskImage(normalizedImage);
+        }
+      }
+    }
   };
-
-  #handleRawImage = (messageEvent: PartialMessageEvent<RawImage>): void => {
-    this.handleImage(messageEvent, normalizeRawImage(messageEvent.message));
-  };
-
-  #handleCompressedImage = (messageEvent: PartialMessageEvent<CompressedImage>): void => {
-    this.handleImage(messageEvent, normalizeCompressedImage(messageEvent.message));
-  };
-
-  #handleCompressedVideo = (messageEvent: PartialMessageEvent<CompressedVideo>): void => {
-    this.handleImage(messageEvent, normalizeCompressedVideo(messageEvent.message));
-  };
-
-  protected handleImage = (messageEvent: PartialMessageEvent<AnyImage>, image: AnyImage): void => {
-    const imageTopic = messageEvent.topic;
-    const receiveTime = toNanoSec(messageEvent.receiveTime);
-    const frameId = "header" in image ? image.header.frame_id : image.frame_id;
-
-    const renderable = this.#getImageRenderable(imageTopic, receiveTime, image, frameId);
-
-    renderable.userData.receiveTime = receiveTime;
+  
+  // Renamed from handleImage to #handleMainImage and takes renderable as argument
+  #handleMainImage = (
+    messageEvent: PartialMessageEvent<AnyImage>,
+    image: AnyImage,
+    renderable: ImageRenderable, // Pass the renderable directly
+  ): void => {
+    renderable.userData.receiveTime = toNanoSec(messageEvent.receiveTime);
     renderable.setImage(image, DEFAULT_BITMAP_WIDTH);
-    // Auto-select settings.cameraInfoTopic if it's not already set
+
+    const imageTopic = renderable.userData.topic; // Use renderable's topic
     const settings = renderable.userData.settings;
+
+    // Auto-select settings.cameraInfoTopic if it's not already set
     if (settings.cameraInfoTopic == undefined) {
       const prefix = getTopicMatchPrefix(imageTopic);
       const newCameraInfoTopic =
         prefix != undefined
-          ? filterMap(this.#cameraInfoTopics, (topic) =>
-              topic.startsWith(prefix) ? topic : undefined,
+          ? filterMap(this.#cameraInfoTopics, (topicName) => // Use topicName from #cameraInfoTopics
+              topicName.startsWith(prefix) ? topicName : undefined,
             ).sort()[0]
           : undefined;
-      settings.cameraInfoTopic = newCameraInfoTopic;
-      renderable.setSettings(settings);
-
-      // With no selected camera info topic, we show a topic error and bail
-      // There's no way to render without camera info
-      if (newCameraInfoTopic == undefined) {
+      
+      if (newCameraInfoTopic) {
+        settings.cameraInfoTopic = newCameraInfoTopic;
+        // Update config reflectively:
+        this.renderer.updateConfig((draft) => {
+          const draftSettings = draft.topics[imageTopic] as Partial<LayerSettingsImage> | undefined;
+          if (draftSettings) {
+            draftSettings.cameraInfoTopic = newCameraInfoTopic;
+          }
+        });
+        // renderable.setSettings(settings) will be called by handleSettingsAction or after this block
+        // No, we need to call it here or ensure the new settings object is used.
+        renderable.setSettings({ ...settings }); // Pass a new object to trigger updates
+        this.updateSettingsTree(); // Reflect change in UI
+         if (!this.#cameraInfoToImageTopics.has(newCameraInfoTopic, imageTopic)) {
+           this.#cameraInfoToImageTopics.set(newCameraInfoTopic, imageTopic);
+         }
+      } else {
         this.renderer.settings.errors.addToTopic(
           imageTopic,
           NO_CAMERA_INFO_ERR,
-          "No CameraInfo topic found",
+          `No CameraInfo topic found matching prefix of ${imageTopic}`,
         );
-        return;
+        // Don't return yet, image can still be shown without camera info (e.g. planar projection)
       }
-
-      // We auto-selected a camera info topic for this image topic so we need to add the lookup.
-      // Without this lookup, the handleCameraInfo won't know what image topics to update when
-      // camera info messages arrive after image messages.
-
-      // Update user settings with the newly selected CameraInfo topic
-      this.renderer.updateConfig((draft) => {
-        const updatedUserSettings = { ...settings };
-        updatedUserSettings.cameraInfoTopic = newCameraInfoTopic;
-        draft.topics[imageTopic] = updatedUserSettings;
-      });
-      this.updateSettingsTree();
     }
 
-    assert(settings.cameraInfoTopic != undefined);
-    this.#cameraInfoToImageTopics.set(settings.cameraInfoTopic, imageTopic);
-
-    // Look up the camera info for our renderable
-    const cameraInfo = this.#cameraInfoByTopic.get(settings.cameraInfoTopic);
-    if (!cameraInfo) {
-      this.renderer.settings.errors.addToTopic(
-        imageTopic,
-        NO_CAMERA_INFO_ERR,
-        `No CameraInfo received on ${settings.cameraInfoTopic}`,
-      );
+    // Apply camera info if available
+    if (settings.cameraInfoTopic) {
+      const cameraInfo = this.#cameraInfoByTopic.get(settings.cameraInfoTopic);
+      if (!cameraInfo) {
+        this.renderer.settings.errors.addToTopic(
+          imageTopic,
+          NO_CAMERA_INFO_ERR,
+          `No CameraInfo received on ${settings.cameraInfoTopic}`,
+        );
+      } else {
+        this.renderer.settings.errors.removeFromTopic(imageTopic, NO_CAMERA_INFO_ERR);
+        this.#recomputeCameraModel(renderable, cameraInfo);
+      }
     } else {
-      this.#recomputeCameraModel(renderable, cameraInfo);
+       // If no camera info topic is set, ensure we clear any old camera model / errors
+       renderable.setCameraModel(undefined); // Clears camera model
+       renderable.userData.cameraInfo = undefined;
+       this.renderer.settings.errors.removeFromTopic(imageTopic, NO_CAMERA_INFO_ERR);
+       this.renderer.settings.errors.removeFromTopic(imageTopic, CAMERA_MODEL);
     }
+    renderable.update(); // Ensure renderable updates itself
   };
 
   #handleCameraInfo = (
@@ -436,21 +497,19 @@ export class Images extends SceneExtension<ImageRenderable> {
   #getImageRenderable(
     imageTopic: string,
     receiveTime: bigint,
-    image: AnyImage | undefined,
-    frameId: string,
+    image: AnyImage | undefined, // The first image message, undefined if called before any image is received
+    frameId: string, // frameId from the first image message
   ): ImageRenderable {
     let renderable = this.renderables.get(imageTopic);
     if (renderable) {
       return renderable;
     }
 
-    // Look up any existing settings for the image topic to save as user data with the renderable
-    const userSettings = this.renderer.config.topics[imageTopic] as
-      | Partial<LayerSettingsImage>
-      | undefined;
-    const messageTime = image
-      ? toNanoSec("header" in image ? image.header.stamp : image.timestamp)
-      : 0n;
+    const userSettings = (this.renderer.config.topics[imageTopic] ?? {}) as Partial<LayerSettingsImage>;
+    const initialSettings = { ...IMAGE_RENDERABLE_DEFAULT_SETTINGS, ...userSettings };
+    
+    const messageTime = image ? toNanoSec("header" in image ? image.header.stamp : image.timestamp) : 0n;
+
     renderable = this.initRenderable(imageTopic, {
       receiveTime,
       messageTime,
@@ -459,20 +518,54 @@ export class Images extends SceneExtension<ImageRenderable> {
       pose: makePose(),
       settingsPath: ["topics", imageTopic],
       topic: imageTopic,
-      settings: { ...IMAGE_RENDERABLE_DEFAULT_SETTINGS, ...userSettings },
+      settings: initialSettings, // Use combined settings
       cameraInfo: undefined,
       cameraModel: undefined,
-      image,
+      image, // Initial image
       texture: undefined,
-      material: undefined,
+      material: undefined, // Material will be initialized by ImageRenderable constructor
       geometry: undefined,
       mesh: undefined,
+      // Explicitly initialize new fields from ImageUserData related to segmentation masks
+      segmentationMaskImage: undefined,
+      segmentationMaskIndexTexture: undefined,
+      segmentationMaskColorMapTexture: undefined,
+      maxMaskIndex: 0,
+      classColorMap: new Map(),
     });
 
     this.add(renderable);
     this.renderables.set(imageTopic, renderable);
+
+    // Populate bidirectional maps after renderable creation
+    if (initialSettings.cameraInfoTopic) {
+      this.#cameraInfoToImageTopics.set(initialSettings.cameraInfoTopic, imageTopic);
+    }
+    if (initialSettings.segmentationMaskTopic) {
+      this.#segmentationMaskToImageTopics.set(initialSettings.segmentationMaskTopic, imageTopic);
+    }
+
     return renderable;
   }
+
+  // Override to create renderables for topics not yet in this.renderables,
+  // if they appear in settings (e.g. added by user but no message received yet)
+  public override syncSettings(): void {
+    super.syncSettings(); // Handles removal of renderables for topics no longer in settings
+
+    // Create renderables for new topics in settings
+    for (const topicName of Object.keys(this.renderer.config.topics)) {
+        if (!this.renderables.has(topicName) && topicIsConvertibleToSchema(this.renderer.topicFromName(topicName), this.supportedImageSchemas)) {
+            // Create a placeholder renderable. frameId and image will be set on first message.
+            // receiveTime and messageTime are set to 0n, will be updated on first message.
+            const renderable = this.#getImageRenderable(topicName, 0n, undefined, "");
+            // Apply settings again in case #getImageRenderable used defaults before full config was available
+            const userSettings = (this.renderer.config.topics[topicName] ?? {}) as Partial<LayerSettingsImage>;
+            renderable.setSettings({ ...IMAGE_RENDERABLE_DEFAULT_SETTINGS, ...userSettings});
+        }
+    }
+  }
+
   protected initRenderable(topicName: string, userData: ImageUserData): ImageRenderable {
     return new ImageRenderable(topicName, this.renderer, userData);
   }
