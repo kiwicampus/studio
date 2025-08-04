@@ -27,6 +27,7 @@ import type {
 } from "./TimestampDatasetsBuilderImpl";
 import { getChartValue, isChartValue } from "../datum";
 import { MathFunction, mathFunctions } from "../mathFunctions";
+import { quatToEuler, isQuaternion } from "@foxglove/studio-base/util/quatToEuler";
 
 // If the datasets builder is garbage collected we also need to cleanup the worker
 // This registry ensures the worker is cleaned up when the builder is garbage collected
@@ -216,11 +217,29 @@ function readMessagePathItems(
 
     const items = simpleGetMessagePathDataItems(event, path);
     for (const item of items) {
-      if (!isChartValue(item)) {
-        continue;
+      let rawValue: unknown = item;
+      let yValue: number | undefined;
+
+      if (path.modifier === "roll" || path.modifier === "pitch" || path.modifier === "yaw") {
+        if (isQuaternion(item)) {
+          const [r, p, y] = quatToEuler(item.x, item.y, item.z, item.w);
+          const angle = path.modifier === "roll" ? r : path.modifier === "pitch" ? p : y;
+          yValue = angle;
+        } else {
+          continue;
+        }
+      } else {
+        if (!isChartValue(item)) {
+          continue;
+        }
+        const chartValue = getChartValue(item);
+        if (chartValue == undefined) {
+          continue;
+        }
+        yValue = mathFunction ? mathFunction(chartValue) : chartValue;
       }
-      const chartValue = getChartValue(item);
-      if (chartValue == undefined) {
+
+      if (yValue == undefined) {
         continue;
       }
 
@@ -231,13 +250,12 @@ function readMessagePathItems(
       }
 
       const xValue = toSec(subtractTime(timestamp, startTime));
-      const mathModified = mathFunction ? mathFunction(chartValue) : chartValue;
       out.push({
         x: xValue,
-        y: mathModified,
+        y: yValue!,
         receiveTime: event.receiveTime,
         headerStamp,
-        value: mathFunction ? mathModified : item,
+        value: path.modifier === "roll" || path.modifier === "pitch" || path.modifier === "yaw" ? yValue! : mathFunction ? yValue! : rawValue,
       });
     }
   }

@@ -7,6 +7,22 @@ import * as THREE from "three";
 const tempQuaternion = new THREE.Quaternion();
 const tempEuler = new THREE.Euler();
 
+export function isQuaternion(value: unknown): value is {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+} {
+  return (
+    typeof value === "object" &&
+    value != undefined &&
+    typeof (value as any).x === "number" &&
+    typeof (value as any).y === "number" &&
+    typeof (value as any).z === "number" &&
+    typeof (value as any).w === "number"
+  );
+}
+
 /**
  * Convert a quaternion to roll-pitch-yaw Euler angles.
  * Returns angles in degrees using extrinsic ZYX (yaw-pitch-roll) convention,

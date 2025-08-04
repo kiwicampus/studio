@@ -23,6 +23,7 @@ import {
 } from "@foxglove/studio-base/panels/StateTransitions/openSiblingStateTransitionsPanel";
 import { OpenSiblingPanel } from "@foxglove/studio-base/types/panels";
 import clipboard from "@foxglove/studio-base/util/clipboard";
+import { isQuaternion } from "@foxglove/studio-base/util/quatToEuler";
 
 import HighlightedValue from "./HighlightedValue";
 import { copyMessageReplacer } from "./copyMessageReplacer";
@@ -95,6 +96,15 @@ function Value(props: ValueProps): JSX.Element {
     [basePath, openSiblingPanel],
   );
 
+  const openPlotPanelMultiple = useCallback(
+    (pathSuffixes: string[]) => () => {
+      for (const suffix of pathSuffixes) {
+        openSiblingPlotPanel(openSiblingPanel, `${basePath}${suffix}`);
+      }
+    },
+    [basePath, openSiblingPanel],
+  );
+
   const openStateTransitionsPanel = useCallback(
     (pathSuffix: string) => () => {
       openSiblingStateTransitionsPanel(openSiblingPanel, `${basePath}${pathSuffix}`);
@@ -131,6 +141,14 @@ function Value(props: ValueProps): JSX.Element {
         onClick: () => {
           handleCopy(JSON.stringify(itemValue, copyMessageReplacer, 2) ?? "");
         },
+      });
+    }
+    if (isQuaternion(itemValue)) {
+      actions.push({
+        key: "euler",
+        tooltip: "Plot Euler angles",
+        icon: <LineChartIcon fontSize="inherit" />,
+        onClick: openPlotPanelMultiple([".@roll", ".@pitch", ".@yaw"]),
       });
     }
     if (valueAction != undefined) {
@@ -180,6 +198,7 @@ function Value(props: ValueProps): JSX.Element {
     itemValue,
     onFilter,
     openPlotPanel,
+    openPlotPanelMultiple,
     openStateTransitionsPanel,
     valueAction,
   ]);

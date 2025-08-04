@@ -25,6 +25,7 @@ import {
   Viewport,
 } from "./IDatasetsBuilder";
 import { getChartValue, isChartValue } from "../datum";
+import { quatToEuler, isQuaternion } from "@foxglove/studio-base/util/quatToEuler";
 import { MathFunction, mathFunctions } from "../mathFunctions";
 
 type CustomDatasetsSeriesItem = {
@@ -246,18 +247,34 @@ function readMessagePathItems(
 
     const items = simpleGetMessagePathDataItems(event, path);
     for (const item of items) {
-      if (!isChartValue(item)) {
-        continue;
+      let value: number | undefined;
+      let original: unknown = item;
+
+      if (path.modifier === "roll" || path.modifier === "pitch" || path.modifier === "yaw") {
+        if (isQuaternion(item)) {
+          const [r, p, y] = quatToEuler(item.x, item.y, item.z, item.w);
+          value = path.modifier === "roll" ? r : path.modifier === "pitch" ? p : y;
+        } else {
+          continue;
+        }
+      } else {
+        if (!isChartValue(item)) {
+          continue;
+        }
+        const chartValue = getChartValue(item);
+        if (chartValue == undefined) {
+          continue;
+        }
+        value = mathFunction ? mathFunction(chartValue) : chartValue;
       }
-      const chartValue = getChartValue(item);
-      if (chartValue == undefined) {
+
+      if (value == undefined) {
         continue;
       }
 
-      const mathModified = mathFunction ? mathFunction(chartValue) : chartValue;
       out.push({
-        value: mathModified,
-        originalValue: mathFunction ? mathModified : item,
+        value,
+        originalValue: path.modifier === "roll" || path.modifier === "pitch" || path.modifier === "yaw" ? value : mathFunction ? value : original,
         receiveTime: event.receiveTime,
       });
     }

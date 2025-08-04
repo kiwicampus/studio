@@ -18,6 +18,7 @@ import { MessageBlock, PlayerState } from "@foxglove/studio-base/players/types";
 import { Bounds } from "@foxglove/studio-base/types/Bounds";
 import delay from "@foxglove/studio-base/util/delay";
 import { getContrastColor, getLineColor } from "@foxglove/studio-base/util/plotColors";
+import { quatToEuler, isQuaternion } from "@foxglove/studio-base/util/quatToEuler";
 
 import { Dataset, InteractionEvent, Scale, UpdateAction } from "./ChartRenderer";
 import { OffscreenCanvasRenderer } from "./OffscreenCanvasRenderer";
@@ -151,7 +152,17 @@ export class PlotCoordinator extends EventEmitter<EventTypes> {
         }
         const items = simpleGetMessagePathDataItems(msgEvent, seriesItem.parsed);
         if (items.length > 0) {
-          this.#currentValuesByConfigIndex[seriesItem.configIndex] = items[items.length - 1];
+          let value: unknown = items[items.length - 1];
+          if (
+            (seriesItem.parsed.modifier === "roll" ||
+              seriesItem.parsed.modifier === "pitch" ||
+              seriesItem.parsed.modifier === "yaw") &&
+            isQuaternion(value)
+          ) {
+            const [r, p, y] = quatToEuler(value.x, value.y, value.z, value.w);
+            value = seriesItem.parsed.modifier === "roll" ? r : seriesItem.parsed.modifier === "pitch" ? p : y;
+          }
+          this.#currentValuesByConfigIndex[seriesItem.configIndex] = value;
           break;
         }
       }
