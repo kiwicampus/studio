@@ -98,6 +98,7 @@ export default class RosboardClient {
   version: string = "";
   closed: boolean = false;
   url: string;
+  auto_reconnect: boolean = true;
   private _availableTopics: Topic = {};
   private _topicsFull: TypeIndex = {};
   private _topicsFullRequested: boolean = false;
@@ -178,6 +179,9 @@ export default class RosboardClient {
         if (type === "y" && typeof payload === "object") {
           this.hostname = payload.hostname;
           this.version = payload.version;
+          if ("auto_reconnect" in payload) {
+            this.auto_reconnect = payload.auto_reconnect;
+          }
         } else if (type === "t" && typeof payload === "object") {
           // Update availableTopics directly with the new payload
           this._availableTopics = payload;

@@ -217,8 +217,9 @@ export default class RosboardPlayer implements Player {
 
       this.#emitState();
 
-      // Try connecting again.
-      setTimeout(this.#open, 3000);
+      if (rosClient.auto_reconnect) {
+        setTimeout(this.#open, 3000);
+      }
     });
   };
 

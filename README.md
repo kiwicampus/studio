@@ -109,6 +109,8 @@ yarn install
 yarn run web:serve
 ```
 
+If you get an error, try replacing `yarn install` with `YARN_CHECKSUM_BEHAVIOR=update yarn install`
+
 It will server the web app and recompile interactively when you make changes. You can access the web app at [localhost:8080](http://localhost:8080/).
 
 ### Overriding the default layout
