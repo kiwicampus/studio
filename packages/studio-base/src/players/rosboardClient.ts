@@ -180,7 +180,6 @@ export default class RosboardClient {
           this.hostname = payload.hostname;
           this.version = payload.version;
           if ("auto_reconnect" in payload) {
-            console.log("auto_reconnect", payload.auto_reconnect);
             this.auto_reconnect = payload.auto_reconnect;
           }
         } else if (type === "t" && typeof payload === "object") {
