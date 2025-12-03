@@ -7,6 +7,7 @@
 
 import { Draft, produce } from "immer";
 import * as _ from "lodash-es";
+import { basename, extname } from "path";
 import { Dispatch, SetStateAction, useCallback, useMemo } from "react";
 import { useMountedState } from "react-use";
 
@@ -26,6 +27,7 @@ import {
 import useCallbackWithToast from "@lichtblick/suite-base/hooks/useCallbackWithToast";
 import { AppEvent } from "@lichtblick/suite-base/services/IAnalytics";
 import { downloadTextFile } from "@lichtblick/suite-base/util/download";
+import showOpenFilePicker from "@lichtblick/suite-base/util/showOpenFilePicker";
 
 import {
   LeftSidebarItemKey,
@@ -133,6 +135,9 @@ export function useWorkspaceActions(): WorkspaceActions {
         },
       ],
     });
+    if (fileHandles.length === 0 || !fileHandles[0]) {
+      return;
+    }
     if (!isMounted()) {
       return;
     }
@@ -157,6 +162,7 @@ export function useWorkspaceActions(): WorkspaceActions {
     }
 
     const data = parsedState as LayoutData;
+    const layoutName = basename(file.name, extname(file.name));
 
     // If there's an app context handler for this we let it take over from here
     if (appContext.importLayoutFile) {
@@ -164,7 +170,7 @@ export function useWorkspaceActions(): WorkspaceActions {
       return;
     }
 
-    setCurrentLayout({ data });
+    setCurrentLayout({ name: layoutName, data });
 
     void analytics.logEvent(AppEvent.LAYOUT_IMPORT);
   }, [analytics, appContext, isMounted, setCurrentLayout]);

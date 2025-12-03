@@ -22,6 +22,7 @@ import { useLayoutManager } from "@lichtblick/suite-base/context/LayoutManagerCo
 import { usePlayerSelection } from "@lichtblick/suite-base/context/PlayerSelectionContext";
 import { defaultLayout } from "@lichtblick/suite-base/providers/CurrentLayoutProvider/defaultLayout";
 import { migratePanelsState } from "@lichtblick/suite-base/services/migrateLayout";
+import { windowAppURLState } from "@lichtblick/suite-base/util/appURLState";
 
 function selectLayoutData(state: LayoutState) {
   return state.selectedLayout?.data;
@@ -56,6 +57,12 @@ export function CurrentLayoutLocalStorageSyncAdapter(): React.JSX.Element {
   }, [debouncedLayoutData]);
 
   useEffect(() => {
+    // Don't restore from localStorage if there's a layoutId or layoutUrl in the URL
+    const urlState = windowAppURLState();
+    if (urlState?.layoutId || urlState?.layoutUrl) {
+      return;
+    }
+
     log.debug(`Reading layout from local storage: ${LOCAL_STORAGE_STUDIO_LAYOUT_KEY}`);
 
     const serializedLayoutData = localStorage.getItem(LOCAL_STORAGE_STUDIO_LAYOUT_KEY);
@@ -77,6 +84,10 @@ export function CurrentLayoutLocalStorageSyncAdapter(): React.JSX.Element {
     const layoutState = getCurrentLayoutState();
 
     if (!layoutState.selectedLayout) {
+      return;
+    }
+    // Skip saving temporary layouts (e.g., loaded from URL)
+    if (layoutState.selectedLayout.id.startsWith("temp-")) {
       return;
     }
     try {
