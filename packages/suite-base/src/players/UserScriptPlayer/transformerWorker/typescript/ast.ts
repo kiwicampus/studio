@@ -202,7 +202,17 @@ export const findReturnType = (
     throw new DatatypeExtractionError(nonFuncError);
   }
 
-  const fullReturnType = typeChecker.getReturnTypeOfSignature(signature);
+  let fullReturnType = typeChecker.getReturnTypeOfSignature(signature);
+
+  // Unwrap Promise types for async functions
+  const returnTypeSymbol = fullReturnType.getSymbol();
+  if (returnTypeSymbol && returnTypeSymbol.getName() === "Promise") {
+    const typeArguments = typeChecker.getTypeArguments(fullReturnType as ts.GenericType);
+    if (typeArguments && typeArguments.length > 0) {
+      fullReturnType = typeArguments[0]!;
+    }
+  }
+
   const nonNullable = fullReturnType.getNonNullableType();
 
   // In some future we could support intersection types where all the fields are known
