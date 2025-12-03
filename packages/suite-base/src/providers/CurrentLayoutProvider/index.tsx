@@ -23,6 +23,7 @@ import CurrentLayoutContext, {
   ICurrentLayout,
   LayoutID,
   LayoutState,
+  SelectedLayout,
 } from "@lichtblick/suite-base/context/CurrentLayoutContext";
 import {
   AddPanelPayload,
@@ -276,7 +277,8 @@ export default function CurrentLayoutProvider({
   // Load initial state by re-selecting the last selected layout from the UserProfile.
   useAsync(async () => {
     // Don't restore the layout if there's one specified in the app state url.
-    if (windowAppURLState()?.layoutId) {
+    const urlState = windowAppURLState();
+    if (urlState?.layoutId || urlState?.layoutUrl) {
       return;
     }
 
@@ -329,10 +331,31 @@ export default function CurrentLayoutProvider({
 
   const { updateSharedPanelState } = useUpdateSharedPanelState(layoutStateRef, setLayoutState);
 
+  const setCurrentLayout = useCallback(
+    (newLayout: SelectedLayout | undefined) => {
+      if (newLayout == undefined) {
+        setLayoutState({ selectedLayout: undefined });
+        return;
+      }
+      // Generate a temporary ID if not provided (for layouts loaded from URL)
+      const layoutId = (newLayout as { id?: LayoutID }).id ?? (`temp-${Date.now()}` as LayoutID);
+      setLayoutState({
+        selectedLayout: {
+          data: newLayout.data,
+          id: layoutId,
+          edited: newLayout.edited,
+          name: newLayout.name,
+          loading: false,
+        },
+      });
+    },
+    [setLayoutState],
+  );
+
   const actions: ICurrentLayout["actions"] = useMemo(
     () => ({
       updateSharedPanelState,
-      setCurrentLayout: () => {},
+      setCurrentLayout,
       setSelectedLayoutId,
       getCurrentLayoutState: () => layoutStateRef.current,
 

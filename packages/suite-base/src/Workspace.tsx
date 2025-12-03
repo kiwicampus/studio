@@ -595,11 +595,21 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
     let res;
     try {
       res = await fetch(layoutUrl);
+      if (!res.ok) {
+        log.debug(`Could not load the layout from ${layoutUrl}`);
+        return;
+      }
     } catch {
       log.debug(`Could not load the layout from ${layoutUrl}`);
       return;
     }
-    const parsedState: unknown = JSON.parse(await res.text());
+    let parsedState: unknown;
+    try {
+      parsedState = JSON.parse(await res.text());
+    } catch {
+      log.debug(`Could not parse layout JSON from ${layoutUrl}`);
+      return;
+    }
 
     if (typeof parsedState !== "object" || !parsedState) {
       log.debug(`${layoutUrl} does not contain valid layout JSON`);
@@ -633,7 +643,7 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
     }
     // Apply any available datasource args
     if (unappliedSourceArgs.layoutUrl) {
-      fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
+      void fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
       shouldUpdate = true;
     }
     if (shouldUpdate) {
