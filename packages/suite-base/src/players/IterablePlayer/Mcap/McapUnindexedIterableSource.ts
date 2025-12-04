@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -23,13 +23,13 @@ import {
 import { MessageEvent, Metadata } from "@lichtblick/suite";
 import {
   GetBackfillMessagesArgs,
-  IIterableSource,
-  Initalization,
+  Initialization,
+  ISerializedIterableSource,
   IteratorResult,
   MessageIteratorArgs,
+  TopicWithDecodingInfo,
 } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
-import { estimateObjectSize } from "@lichtblick/suite-base/players/messageMemoryEstimation";
-import { PlayerProblem, Topic, TopicStats } from "@lichtblick/suite-base/players/types";
+import { PlayerAlert, TopicStats } from "@lichtblick/suite-base/players/types";
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 
 const DURATION_YEAR_SEC = 365 * 24 * 60 * 60;
@@ -37,17 +37,19 @@ const DURATION_YEAR_SEC = 365 * 24 * 60 * 60;
 type Options = { size: number; stream: ReadableStream<Uint8Array> };
 
 /** Only efficient for small files */
-export class McapUnindexedIterableSource implements IIterableSource {
+export class McapUnindexedIterableSource implements ISerializedIterableSource {
   #options: Options;
-  #msgEventsByChannel?: Map<number, MessageEvent[]>;
+  #msgEventsByChannel?: Map<number, MessageEvent<Uint8Array>[]>;
   #start?: Time;
   #end?: Time;
+
+  public readonly sourceType = "serialized";
 
   public constructor(options: Options) {
     this.#options = options;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     if (this.#options.size > 1024 * 1024 * 1024) {
       // This provider uses a simple approach of loading everything into memory up front, so we
       // can't handle large files
@@ -57,12 +59,12 @@ export class McapUnindexedIterableSource implements IIterableSource {
 
     const streamReader = this.#options.stream.getReader();
 
-    const problems: PlayerProblem[] = [];
+    const alerts: PlayerAlert[] = [];
     const metadata: Metadata[] = [];
     const channelIdsWithErrors = new Set<number>();
 
     let messageCount = 0;
-    const messagesByChannel = new Map<number, MessageEvent[]>();
+    const messagesByChannel = new Map<number, MessageEvent<Uint8Array>[]>();
     const schemasById = new Map<number, McapTypes.TypedMcapRecords["Schema"]>();
     const channelInfoById = new Map<
       number,
@@ -70,20 +72,10 @@ export class McapUnindexedIterableSource implements IIterableSource {
         channel: McapTypes.Channel;
         parsedChannel: ParsedChannel;
         schemaName: string | undefined;
+        schemaEncoding: string | undefined;
+        schemaData: Uint8Array | undefined;
       }
     >();
-    const messageSizeEstimateByTopic: Record<string, number> = {};
-    const estimateMessageSize = (topic: string, msg: unknown): number => {
-      const cachedSize = messageSizeEstimateByTopic[topic];
-      if (cachedSize != undefined) {
-        return cachedSize;
-      }
-
-      const sizeEstimate = estimateObjectSize(msg);
-      messageSizeEstimateByTopic[topic] = sizeEstimate;
-      return sizeEstimate;
-    };
-
     let startTime: Time | undefined;
     let endTime: Time | undefined;
     let profile: string | undefined;
@@ -140,11 +132,13 @@ export class McapUnindexedIterableSource implements IIterableSource {
               channel: record,
               parsedChannel,
               schemaName: schema?.name,
+              schemaEncoding: schema?.encoding,
+              schemaData: schema?.data,
             });
             messagesByChannel.set(record.id, []);
           } catch (error) {
             channelIdsWithErrors.add(record.id);
-            problems.push({
+            alerts.push({
               severity: "error",
               message: `Error in topic ${record.topic} (channel ${record.id}): ${error.message}`,
               error,
@@ -171,17 +165,12 @@ export class McapUnindexedIterableSource implements IIterableSource {
           if (!endTime || isGreaterThan(receiveTime, endTime)) {
             endTime = receiveTime;
           }
-          const deserializedMessage = channelInfo.parsedChannel.deserialize(record.data);
-          const estimatedMemorySize = estimateMessageSize(
-            channelInfo.channel.topic,
-            deserializedMessage,
-          );
           messages.push({
             topic: channelInfo.channel.topic,
             receiveTime,
             publishTime: fromNanoSec(record.publishTime),
-            message: deserializedMessage,
-            sizeInBytes: Math.max(record.data.byteLength, estimatedMemorySize),
+            message: record.data,
+            sizeInBytes: record.data.byteLength,
             schemaName: channelInfo.schemaName ?? "",
           });
           break;
@@ -199,13 +188,25 @@ export class McapUnindexedIterableSource implements IIterableSource {
 
     this.#msgEventsByChannel = messagesByChannel;
 
-    const topics: Topic[] = [];
+    const topics: TopicWithDecodingInfo[] = [];
     const topicStats = new Map<string, TopicStats>();
     const datatypes: RosDatatypes = new Map();
     const publishersByTopic = new Map<string, Set<string>>();
 
-    for (const { channel, parsedChannel, schemaName } of channelInfoById.values()) {
-      topics.push({ name: channel.topic, schemaName });
+    for (const {
+      channel,
+      parsedChannel,
+      schemaName,
+      schemaData,
+      schemaEncoding,
+    } of channelInfoById.values()) {
+      topics.push({
+        name: channel.topic,
+        messageEncoding: channel.messageEncoding,
+        schemaName,
+        schemaData,
+        schemaEncoding,
+      });
       const numMessages = messagesByChannel.get(channel.id)?.length;
       if (numMessages != undefined) {
         topicStats.set(channel.topic, { numMessages });
@@ -236,7 +237,7 @@ export class McapUnindexedIterableSource implements IIterableSource {
       const startRfc = toRFC3339String(this.#start);
       const endRfc = toRFC3339String(this.#end);
 
-      problems.push({
+      alerts.push({
         message: "This file has an abnormally long duration.",
         tip: `The start ${startRfc} and end ${endRfc} are greater than a year.`,
         severity: "warn",
@@ -244,12 +245,12 @@ export class McapUnindexedIterableSource implements IIterableSource {
     }
 
     if (messageCount === 0) {
-      problems.push({
+      alerts.push({
         message: "This file contains no messages.",
         severity: "warn",
       });
     } else {
-      problems.push({
+      alerts.push({
         message: "This file is unindexed. Unindexed files may have degraded performance.",
         tip: "See the MCAP spec: https://mcap.dev/specification/index.html#summary-section",
         severity: "warn",
@@ -262,7 +263,7 @@ export class McapUnindexedIterableSource implements IIterableSource {
       topics,
       datatypes,
       profile,
-      problems,
+      alerts,
       publishersByTopic,
       topicStats,
       metadata,
@@ -271,7 +272,7 @@ export class McapUnindexedIterableSource implements IIterableSource {
 
   public async *messageIterator(
     args: MessageIteratorArgs,
-  ): AsyncIterableIterator<Readonly<IteratorResult>> {
+  ): AsyncIterableIterator<Readonly<IteratorResult<Uint8Array>>> {
     if (!this.#msgEventsByChannel) {
       throw new Error("initialization not completed");
     }
@@ -296,7 +297,9 @@ export class McapUnindexedIterableSource implements IIterableSource {
           resultMessages.push({
             type: "message-event" as const,
             connectionId: channelId,
-            msgEvent,
+            // We copy the message event here as we are transferring the underlying array buffer
+            // to the main thread which invalidates it.
+            msgEvent: structuredClone(msgEvent),
           });
         }
       }
@@ -308,17 +311,21 @@ export class McapUnindexedIterableSource implements IIterableSource {
     yield* resultMessages;
   }
 
-  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+  public async getBackfillMessages(
+    args: GetBackfillMessagesArgs,
+  ): Promise<MessageEvent<Uint8Array>[]> {
     if (!this.#msgEventsByChannel) {
       throw new Error("initialization not completed");
     }
 
     const needTopics = args.topics;
-    const msgEventsByTopic = new Map<string, MessageEvent>();
+    const msgEventsByTopic = new Map<string, MessageEvent<Uint8Array>>();
     for (const [, msgEvents] of this.#msgEventsByChannel) {
       for (const msgEvent of msgEvents) {
         if (compare(msgEvent.receiveTime, args.time) <= 0 && needTopics.has(msgEvent.topic)) {
-          msgEventsByTopic.set(msgEvent.topic, msgEvent);
+          // We copy the message event here as we are transferring the underlying array buffer
+          // to the main thread which invalidates it.
+          msgEventsByTopic.set(msgEvent.topic, structuredClone(msgEvent));
         }
       }
     }

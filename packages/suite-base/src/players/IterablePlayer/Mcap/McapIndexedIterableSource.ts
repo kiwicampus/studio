@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -7,30 +7,24 @@
 
 import { McapIndexedReader, McapTypes } from "@mcap/core";
 
-import { pickFields } from "@lichtblick/den/records";
 import Logger from "@lichtblick/log";
 import { ParsedChannel, parseChannel } from "@lichtblick/mcap-support";
 import { Time, fromNanoSec, toNanoSec, compare } from "@lichtblick/rostime";
 import { MessageEvent, Metadata } from "@lichtblick/suite";
 import {
   GetBackfillMessagesArgs,
-  IIterableSource,
-  Initalization,
+  Initialization,
+  ISerializedIterableSource,
   IteratorResult,
   MessageIteratorArgs,
+  TopicWithDecodingInfo,
 } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
-import { estimateObjectSize } from "@lichtblick/suite-base/players/messageMemoryEstimation";
-import {
-  PlayerProblem,
-  SubscribePayload,
-  Topic,
-  TopicStats,
-} from "@lichtblick/suite-base/players/types";
+import { PlayerAlert, TopicStats } from "@lichtblick/suite-base/players/types";
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 
 const log = Logger.getLogger(__filename);
 
-export class McapIndexedIterableSource implements IIterableSource {
+export class McapIndexedIterableSource implements ISerializedIterableSource {
   #reader: McapIndexedReader;
   #channelInfoById = new Map<
     number,
@@ -42,13 +36,14 @@ export class McapIndexedIterableSource implements IIterableSource {
   >();
   #start?: Time;
   #end?: Time;
-  #messageSizeEstimateByHash: Record<string /* subscription hash */, number> = {};
+
+  public readonly sourceType = "serialized";
 
   public constructor(reader: McapIndexedReader) {
     this.#reader = reader;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     let startTime: bigint | undefined;
     let endTime: bigint | undefined;
     for (const chunk of this.#reader.chunkIndexes) {
@@ -61,9 +56,9 @@ export class McapIndexedIterableSource implements IIterableSource {
     }
 
     const topicStats = new Map<string, TopicStats>();
-    const topicsByName = new Map<string, Topic>();
+    const topicsByName = new Map<string, TopicWithDecodingInfo>();
     const datatypes: RosDatatypes = new Map();
-    const problems: PlayerProblem[] = [];
+    const alerts: PlayerAlert[] = [];
     const metadata: Metadata[] = [];
 
     const publishersByTopic = new Map<string, Set<string>>();
@@ -71,7 +66,7 @@ export class McapIndexedIterableSource implements IIterableSource {
     for (const channel of this.#reader.channelsById.values()) {
       const schema = this.#reader.schemasById.get(channel.schemaId);
       if (channel.schemaId !== 0 && schema == undefined) {
-        problems.push({
+        alerts.push({
           severity: "error",
           message: `Missing schema info for schema id ${channel.schemaId} (channel ${channel.id}, topic ${channel.topic})`,
         });
@@ -82,7 +77,7 @@ export class McapIndexedIterableSource implements IIterableSource {
       try {
         parsedChannel = parseChannel({ messageEncoding: channel.messageEncoding, schema });
       } catch (error) {
-        problems.push({
+        alerts.push({
           severity: "error",
           message: `Error in topic ${channel.topic} (channel ${channel.id}): ${error.message}`,
           error,
@@ -97,7 +92,13 @@ export class McapIndexedIterableSource implements IIterableSource {
 
       let topic = topicsByName.get(channel.topic);
       if (!topic) {
-        topic = { name: channel.topic, schemaName: schema?.name };
+        topic = {
+          name: channel.topic,
+          schemaName: schema?.name,
+          messageEncoding: channel.messageEncoding,
+          schemaData: schema?.data,
+          schemaEncoding: schema?.encoding,
+        };
         topicsByName.set(channel.topic, topic);
 
         const numMessages = this.#reader.statistics?.channelMessageCounts.get(channel.id);
@@ -142,7 +143,7 @@ export class McapIndexedIterableSource implements IIterableSource {
       topics: [...topicsByName.values()],
       datatypes,
       profile: this.#reader.header.profile,
-      problems,
+      alerts,
       metadata,
       publishersByTopic,
       topicStats,
@@ -151,7 +152,7 @@ export class McapIndexedIterableSource implements IIterableSource {
 
   public async *messageIterator(
     args: MessageIteratorArgs,
-  ): AsyncIterableIterator<Readonly<IteratorResult>> {
+  ): AsyncIterableIterator<Readonly<IteratorResult<Uint8Array>>> {
     const topics = args.topics;
     const start = args.start ?? this.#start;
     const end = args.end ?? this.#end;
@@ -159,18 +160,6 @@ export class McapIndexedIterableSource implements IIterableSource {
     if (topics.size === 0 || !start || !end) {
       return;
     }
-
-    // Determine the subscription hash which is used to lookup message size estimates.
-    // This is done here to avoid doing this repeatedly when iterating over messages.
-    const topicsWithSubscriptionHash = new Map(
-      Array.from(topics, ([topic, subscribePayload]) => [
-        topic,
-        {
-          ...subscribePayload,
-          subscriptionHash: computeSubscriptionHash(topic, subscribePayload),
-        },
-      ]),
-    );
 
     const topicNames = Array.from(topics.keys());
 
@@ -183,9 +172,9 @@ export class McapIndexedIterableSource implements IIterableSource {
       const channelInfo = this.#channelInfoById.get(message.channelId);
       if (!channelInfo) {
         yield {
-          type: "problem",
+          type: "alert",
           connectionId: message.channelId,
-          problem: {
+          alert: {
             message: `Received message on channel ${message.channelId} without prior channel info`,
             severity: "error",
           },
@@ -193,34 +182,22 @@ export class McapIndexedIterableSource implements IIterableSource {
         continue;
       }
       try {
-        const msg = channelInfo.parsedChannel.deserialize(message.data) as Record<string, unknown>;
-        const spec = topicsWithSubscriptionHash.get(channelInfo.channel.topic);
-        const payload = spec?.fields != undefined ? pickFields(msg, spec.fields) : msg;
-        const estimatedMemorySize = this.#estimateMessageSize(
-          spec?.subscriptionHash ?? channelInfo.channel.topic,
-          payload,
-        );
-        const sizeInBytes =
-          spec?.fields == undefined
-            ? Math.max(message.data.byteLength, estimatedMemorySize)
-            : estimatedMemorySize;
-
         yield {
           type: "message-event",
           msgEvent: {
             topic: channelInfo.channel.topic,
             receiveTime: fromNanoSec(message.logTime),
             publishTime: fromNanoSec(message.publishTime),
-            message: payload,
-            sizeInBytes,
+            message: message.data,
+            sizeInBytes: message.data.byteLength,
             schemaName: channelInfo.schemaName ?? "",
           },
         };
       } catch (error) {
         yield {
-          type: "problem",
+          type: "alert",
           connectionId: message.channelId,
-          problem: {
+          alert: {
             message: `Error decoding message on ${channelInfo.channel.topic}`,
             error,
             severity: "error",
@@ -230,10 +207,12 @@ export class McapIndexedIterableSource implements IIterableSource {
     }
   }
 
-  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+  public async getBackfillMessages(
+    args: GetBackfillMessagesArgs,
+  ): Promise<MessageEvent<Uint8Array>[]> {
     const { topics, time } = args;
 
-    const messages: MessageEvent[] = [];
+    const messages: MessageEvent<Uint8Array>[] = [];
     for (const topic of topics.keys()) {
       // NOTE: An iterator is made for each topic to get the latest message on that topic.
       // An single iterator for all the topics could result in iterating through many
@@ -250,23 +229,14 @@ export class McapIndexedIterableSource implements IIterableSource {
           continue;
         }
 
-        try {
-          const deserializedMessage = channelInfo.parsedChannel.deserialize(message.data);
-          const sizeInBytes = Math.max(
-            message.data.byteLength,
-            this.#estimateMessageSize(channelInfo.channel.topic, deserializedMessage),
-          );
-          messages.push({
-            topic: channelInfo.channel.topic,
-            receiveTime: fromNanoSec(message.logTime),
-            publishTime: fromNanoSec(message.publishTime),
-            message: deserializedMessage,
-            sizeInBytes,
-            schemaName: channelInfo.schemaName ?? "",
-          });
-        } catch (err: unknown) {
-          log.error(err);
-        }
+        messages.push({
+          topic: channelInfo.channel.topic,
+          receiveTime: fromNanoSec(message.logTime),
+          publishTime: fromNanoSec(message.publishTime),
+          message: message.data,
+          sizeInBytes: message.data.byteLength,
+          schemaName: channelInfo.schemaName ?? "",
+        });
 
         break;
       }
@@ -275,29 +245,7 @@ export class McapIndexedIterableSource implements IIterableSource {
     return messages;
   }
 
-  /**
-   * Returns the cached size estimate for the given {@link subscriptionHash}. Estimates the size
-   * of the given {@link msg} object and updates the cache if no such cache entry exists.
-   * @param subscriptionHash Subscription hash
-   * @param msg Deserialized message object
-   * @returns Size estimate in bytes
-   */
-  #estimateMessageSize(subscriptionHash: string, msg: unknown): number {
-    const cachedSize = this.#messageSizeEstimateByHash[subscriptionHash];
-    if (cachedSize != undefined) {
-      return cachedSize;
-    }
-
-    const sizeEstimate = estimateObjectSize(msg);
-    this.#messageSizeEstimateByHash[subscriptionHash] = sizeEstimate;
-    return sizeEstimate;
+  public getStart(): Time | undefined {
+    return this.#start;
   }
-}
-
-// Computes the subscription hash for a given topic & subscription payload pair.
-// In the simplest case, when there are no message slicing fields, the subscription hash is just
-// the topic name. If there are slicing fields, the hash is computed as the topic name appended
-// by "+" seperated message slicing fields.
-function computeSubscriptionHash(topic: string, subscribePayload: SubscribePayload): string {
-  return subscribePayload.fields ? topic + "+" + subscribePayload.fields.join("+") : topic;
 }

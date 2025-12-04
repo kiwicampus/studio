@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -34,7 +34,7 @@ export const MuiAutocomplete: OverrideComponentReturn<"MuiAutocomplete"> = {
           padding: theme.spacing(0.75, 1),
         },
       },
-      [`.${autocompleteClasses.input}.${inputClasses.inputAdornedEnd}`]: {
+      [`.${autocompleteClasses.input}.${inputClasses.input}.MuiInputBase-adornedEnd`]: {
         paddingRight: theme.spacing(2),
       },
     }),

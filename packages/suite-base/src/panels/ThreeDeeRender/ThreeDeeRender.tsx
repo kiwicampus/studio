@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -6,9 +6,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import * as _ from "lodash-es";
-import { useSnackbar } from "notistack";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import ReactDOM from "react-dom";
 import { useLatest } from "react-use";
 import { DeepPartial } from "ts-essentials";
 import { useDebouncedCallback } from "use-debounce";
@@ -27,22 +25,13 @@ import {
   Topic,
 } from "@lichtblick/suite";
 import { AppSetting } from "@lichtblick/suite-base/AppSetting";
-import { BuiltinPanelExtensionContext } from "@lichtblick/suite-base/components/PanelExtensionAdapter";
 import { useAnalytics } from "@lichtblick/suite-base/context/AnalyticsContext";
-import {
-  DEFAULT_SCENE_EXTENSION_CONFIG,
-  SceneExtensionConfig,
-} from "@lichtblick/suite-base/panels/ThreeDeeRender/SceneExtensionConfig";
+import { DEFAULT_SCENE_EXTENSION_CONFIG } from "@lichtblick/suite-base/panels/ThreeDeeRender/SceneExtensionConfig";
+import { PANEL_STYLE } from "@lichtblick/suite-base/panels/ThreeDeeRender/constants";
 import ThemeProvider from "@lichtblick/suite-base/theme/ThemeProvider";
 
-import type {
-  FollowMode,
-  IRenderer,
-  ImageModeConfig,
-  RendererConfig,
-  RendererSubscription,
-  TestOptions,
-} from "./IRenderer";
+import type { IRenderer, ImageModeConfig, RendererConfig, RendererSubscription } from "./IRenderer";
+import type { Path } from "./LayerErrors";
 import type { PickedRenderable } from "./Picker";
 import { SELECTED_ID_VARIABLE } from "./Renderable";
 import { Renderer } from "./Renderer";
@@ -59,34 +48,23 @@ import {
 import type { LayerSettingsTransform } from "./renderables/FrameAxes";
 import { PublishClickEventMap } from "./renderables/PublishClickTool";
 import { DEFAULT_PUBLISH_SETTINGS } from "./renderables/PublishSettings";
-import { InterfaceMode } from "./types";
+import { Shared3DPanelState, ThreeDeeRenderProps } from "./types";
 
 const log = Logger.getLogger(__filename);
-
-type Shared3DPanelState = {
-  cameraState: CameraState;
-  followMode: FollowMode;
-  followTf: undefined | string;
-};
-
-const PANEL_STYLE: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  display: "flex",
-  position: "relative",
-};
 
 /**
  * A panel that renders a 3D scene. This is a thin wrapper around a `Renderer` instance.
  */
-export function ThreeDeeRender(props: {
-  context: BuiltinPanelExtensionContext;
-  interfaceMode: InterfaceMode;
-  testOptions: TestOptions;
-  /** Allow for injection or overriding of default extensions by custom extensions */
-  customSceneExtensions?: DeepPartial<SceneExtensionConfig>;
-}): React.JSX.Element {
-  const { context, interfaceMode, testOptions, customSceneExtensions } = props;
+export function ThreeDeeRender(props: Readonly<ThreeDeeRenderProps>): React.JSX.Element {
+  const {
+    context,
+    interfaceMode,
+    testOptions,
+    customSceneExtensions,
+    customCameraModels,
+    enqueueSnackbarFromParent,
+    logError,
+  } = props;
   const {
     initialState,
     saveState,
@@ -133,13 +111,13 @@ export function ThreeDeeRender(props: {
   const [renderer, setRenderer] = useState<IRenderer | undefined>(undefined);
   const rendererRef = useRef<IRenderer | undefined>(undefined);
 
-  const { enqueueSnackbar } = useSnackbar();
-
   const displayTemporaryError = useCallback(
     (errorString: string) => {
-      enqueueSnackbar(errorString, { variant: "error" });
+      if (enqueueSnackbarFromParent) {
+        enqueueSnackbarFromParent(errorString, "error");
+      }
     },
-    [enqueueSnackbar],
+    [enqueueSnackbarFromParent],
   );
 
   useEffect(() => {
@@ -156,6 +134,7 @@ export function ThreeDeeRender(props: {
           ),
           displayTemporaryError,
           testOptions,
+          customCameraModels,
         })
       : undefined;
     setRenderer(newRenderer);
@@ -169,11 +148,16 @@ export function ThreeDeeRender(props: {
     configRef,
     config.scene.transforms?.enablePreloading,
     customSceneExtensions,
+    customCameraModels,
     interfaceMode,
     fetchAsset,
     testOptions,
     displayTemporaryError,
   ]);
+
+  useEffect(() => {
+    renderer?.setCustomCameraModels(customCameraModels);
+  }, [renderer, customCameraModels]);
 
   useEffect(() => {
     if (renderer) {
@@ -251,25 +235,19 @@ export function ThreeDeeRender(props: {
   // Handle user changes in the settings sidebar
   const actionHandler = useCallback(
     (action: SettingsTreeAction) => {
-      // Wrapping in unstable_batchedUpdates causes React to run effects _after_ the handleAction
-      // function has finished executing. This allows scene extensions that call
-      // renderer.updateConfig to read out the new config value and configure their renderables
-      // before the render occurs.
-      ReactDOM.unstable_batchedUpdates(() => {
-        if (renderer) {
-          const initialCameraState = renderer.getCameraState();
-          renderer.settings.handleAction(action);
-          const updatedCameraState = renderer.getCameraState();
-          // Communicate camera changes from settings to the global state if syncing.
-          if (updatedCameraState !== initialCameraState && config.scene.syncCamera === true) {
-            context.setSharedPanelState({
-              cameraState: updatedCameraState,
-              followMode: config.followMode,
-              followTf: renderer.followFrameId,
-            });
-          }
+      if (renderer) {
+        const initialCameraState = renderer.getCameraState();
+        renderer.settings.handleAction(action);
+        const updatedCameraState = renderer.getCameraState();
+        // Communicate camera changes from settings to the global state if syncing.
+        if (updatedCameraState !== initialCameraState && config.scene.syncCamera === true) {
+          context.setSharedPanelState({
+            cameraState: updatedCameraState,
+            followMode: config.followMode,
+            followTf: renderer.followFrameId,
+          });
         }
-      });
+      }
     },
     [config.followMode, config.scene.syncCamera, context, renderer],
   );
@@ -300,6 +278,32 @@ export function ThreeDeeRender(props: {
     [context],
   );
   useRendererEvent("selectedRenderable", updateSelectedRenderable, renderer);
+
+  // Log LayerErrors to PanelLogs
+  const handleLayerErrorUpdate = useCallback(
+    (path: Path, _errorId: string, errorMessage: string) => {
+      if (logError != undefined) {
+        const pathString = path.join(" > ");
+        const fullMessage = `[${pathString}] ${errorMessage}`;
+        logError(fullMessage);
+      }
+    },
+    [logError],
+  );
+
+  // Subscribe to LayerErrors events
+  useEffect(() => {
+    if (!renderer?.settings.errors) {
+      return;
+    }
+
+    const errors = renderer.settings.errors;
+    errors.on("update", handleLayerErrorUpdate);
+
+    return () => {
+      errors.off("update", handleLayerErrorUpdate);
+    };
+  }, [renderer, handleLayerErrorUpdate]);
 
   const [focusedSettingsPath, setFocusedSettingsPath] = useState<undefined | readonly string[]>();
 
@@ -346,10 +350,13 @@ export function ThreeDeeRender(props: {
     (newConfig: Immutable<RendererConfig>) => {
       saveState(newConfig);
     },
-    1000,
+    100,
     { leading: false, trailing: true, maxWait: 1000 },
   );
-  useEffect(() => throttledSave(config), [config, throttledSave]);
+
+  useEffect(() => {
+    throttledSave(config);
+  }, [config, throttledSave]);
 
   // Keep default panel title up to date with selected image topic in image mode
   useEffect(() => {
@@ -361,42 +368,40 @@ export function ThreeDeeRender(props: {
   // Establish a connection to the message pipeline with context.watch and context.onRender
   useLayoutEffect(() => {
     context.onRender = (renderState: Immutable<RenderState>, done) => {
-      ReactDOM.unstable_batchedUpdates(() => {
-        if (renderState.currentTime) {
-          setCurrentTime(renderState.currentTime);
-        }
+      if (renderState.currentTime) {
+        setCurrentTime(renderState.currentTime);
+      }
 
-        // Check if didSeek is set to true to reset the preloadedMessageTime and
-        // trigger a state flush in Renderer
-        if (renderState.didSeek === true) {
-          setDidSeek(true);
-        }
+      // Check if didSeek is set to true to reset the preloadedMessageTime and
+      // trigger a state flush in Renderer
+      if (renderState.didSeek === true) {
+        setDidSeek(true);
+      }
 
-        // Set the done callback into a state variable to trigger a re-render
-        setRenderDone(() => done);
+      // Set the done callback into a state variable to trigger a re-render
+      setRenderDone(() => done);
 
-        // Keep UI elements and the renderer aware of the current color scheme
-        setColorScheme(renderState.colorScheme);
-        if (renderState.appSettings) {
-          const tz = renderState.appSettings.get(AppSetting.TIMEZONE);
-          setTimezone(typeof tz === "string" ? tz : undefined);
-        }
+      // Keep UI elements and the renderer aware of the current color scheme
+      setColorScheme(renderState.colorScheme);
+      if (renderState.appSettings) {
+        const tz = renderState.appSettings.get(AppSetting.TIMEZONE);
+        setTimezone(typeof tz === "string" ? tz : undefined);
+      }
 
-        // We may have new topics - since we are also watching for messages in
-        // the current frame, topics may not have changed
-        setTopics(renderState.topics);
+      // We may have new topics - since we are also watching for messages in
+      // the current frame, topics may not have changed
+      setTopics(renderState.topics);
 
-        setSharedPanelState(renderState.sharedPanelState as Shared3DPanelState);
+      setSharedPanelState(renderState.sharedPanelState as Shared3DPanelState);
 
-        // Watch for any changes in the map of observed parameters
-        setParameters(renderState.parameters);
+      // Watch for any changes in the map of observed parameters
+      setParameters(renderState.parameters);
 
-        // currentFrame has messages on subscribed topics since the last render call
-        setCurrentFrameMessages(renderState.currentFrame);
+      // currentFrame has messages on subscribed topics since the last render call
+      setCurrentFrameMessages(renderState.currentFrame);
 
-        // allFrames has messages on preloaded topics across all frames (as they are loaded)
-        setAllFrames(renderState.allFrames);
-      });
+      // allFrames has messages on preloaded topics across all frames (as they are loaded)
+      setAllFrames(renderState.allFrames);
     };
 
     context.watch("allFrames");

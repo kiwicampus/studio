@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,13 +8,14 @@
 import * as IDB from "idb/with-async-ittr";
 
 import Log from "@lichtblick/log";
+import { KEY_WORKSPACE_PREFIX } from "@lichtblick/suite-base/constants/browserStorageKeys";
 import { LayoutID } from "@lichtblick/suite-base/context/CurrentLayoutContext";
 import { ILayoutStorage, Layout } from "@lichtblick/suite-base/services/ILayoutStorage";
 import { migrateLayout } from "@lichtblick/suite-base/services/migrateLayout";
 
 const log = Log.getLogger(__filename);
 
-const DATABASE_NAME = "foxglove-layouts";
+const DATABASE_NAME = `${KEY_WORKSPACE_PREFIX}lichtblick-layouts`;
 const OBJECT_STORE_NAME = "layouts";
 
 interface LayoutsDB extends IDB.DBSchema {

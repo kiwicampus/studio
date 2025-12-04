@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -28,13 +28,21 @@ export const jumpSeek = (
   directionSign: (typeof DIRECTION)[keyof typeof DIRECTION],
   currentTime: Time,
   modifierKeys?: { altKey: boolean; shiftKey: boolean },
+  defaultStepSize?: number,
 ): Time => {
   const timeMs = toMillis(currentTime);
-  const deltaMs =
-    modifierKeys?.altKey === true
-      ? ARROW_SEEK_BIG_MS
-      : modifierKeys?.shiftKey === true
-        ? ARROW_SEEK_SMALL_MS
-        : ARROW_SEEK_DEFAULT_MS;
+
+  const correctSeekValue =
+    typeof defaultStepSize === "number" && !isNaN(defaultStepSize) && defaultStepSize > 0;
+
+  let deltaMs: number;
+  if (modifierKeys?.altKey === true) {
+    deltaMs = ARROW_SEEK_BIG_MS;
+  } else if (modifierKeys?.shiftKey === true) {
+    deltaMs = ARROW_SEEK_SMALL_MS;
+  } else {
+    deltaMs = correctSeekValue ? defaultStepSize : ARROW_SEEK_DEFAULT_MS;
+  }
+
   return fromMillis(timeMs + deltaMs * directionSign);
 };

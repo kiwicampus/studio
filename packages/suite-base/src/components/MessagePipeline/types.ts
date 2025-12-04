@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,6 +8,7 @@
 import { Time } from "@lichtblick/rostime";
 import { Immutable, MessageEvent, Metadata, ParameterValue } from "@lichtblick/suite";
 import { BuiltinPanelExtensionContext } from "@lichtblick/suite-base/components/PanelExtensionAdapter";
+import { IteratorResult } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
 import {
   AdvertiseOptions,
   PlayerState,
@@ -21,6 +22,7 @@ type ResumeFrame = () => void;
 export type MessagePipelineContext = Immutable<{
   playerState: PlayerState;
   sortedTopics: Topic[];
+  sortedServices: string[];
   datatypes: RosDatatypes;
   subscriptions: SubscribePayload[];
   messageEventsBySubscriberId: Map<string, MessageEvent[]>;
@@ -38,4 +40,5 @@ export type MessagePipelineContext = Immutable<{
   seekPlayback?: (time: Time) => void;
   // Don't render the next frame until the returned function has been called.
   pauseFrame: (name: string) => ResumeFrame;
+  getBatchIterator: (topic: string) => AsyncIterableIterator<Readonly<IteratorResult>> | undefined;
 }>;

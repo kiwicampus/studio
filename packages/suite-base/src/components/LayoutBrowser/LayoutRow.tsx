@@ -1,18 +1,15 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-/* eslint-disable @lichtblick/no-restricted-imports */
-
 import ErrorIcon from "@mui/icons-material/Error";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import {
   Divider,
   IconButton,
-  ListItem,
   ListItemButton,
   ListItemText,
   Menu,
@@ -20,7 +17,6 @@ import {
   SvgIcon,
   TextField,
   Typography,
-  styled as muiStyled,
 } from "@mui/material";
 import {
   MouseEvent,
@@ -37,88 +33,8 @@ import { useLayoutManager } from "@lichtblick/suite-base/context/LayoutManagerCo
 import { useConfirm } from "@lichtblick/suite-base/hooks/useConfirm";
 import { Layout, layoutIsShared } from "@lichtblick/suite-base/services/ILayoutStorage";
 
-const StyledListItem = muiStyled(ListItem, {
-  shouldForwardProp: (prop) =>
-    prop !== "hasModifications" && prop !== "deletedOnServer" && prop !== "editingName",
-})<{ editingName: boolean; hasModifications: boolean; deletedOnServer: boolean }>(
-  ({ editingName, hasModifications, deletedOnServer, theme }) => ({
-    ".MuiListItemSecondaryAction-root": {
-      right: theme.spacing(0.25),
-    },
-    ".MuiListItemButton-root": {
-      maxWidth: "100%",
-    },
-    "@media (pointer: fine)": {
-      ".MuiListItemButton-root": {
-        paddingRight: theme.spacing(4.5),
-      },
-      ".MuiListItemSecondaryAction-root": {
-        visibility: !hasModifications && !deletedOnServer && "hidden",
-      },
-      "&:hover .MuiListItemSecondaryAction-root": {
-        visibility: "visible",
-      },
-    },
-    ...(editingName && {
-      ".MuiListItemButton-root": {
-        paddingTop: theme.spacing(0.5),
-        paddingBottom: theme.spacing(0.5),
-        paddingLeft: theme.spacing(1),
-      },
-      ".MuiListItemText-root": {
-        margin: 0,
-      },
-    }),
-  }),
-);
-
-const StyledMenuItem = muiStyled(MenuItem, {
-  shouldForwardProp: (prop) => prop !== "debug",
-})<{ debug?: boolean }>(({ theme, debug = false }) => ({
-  position: "relative",
-
-  ...(debug && {
-    "&:before": {
-      content: "''",
-      position: "absolute",
-      left: 0,
-      top: 0,
-      bottom: 0,
-      width: 4,
-      backgroundColor: theme.palette.warning.main,
-      backgroundImage: `repeating-linear-gradient(${[
-        "-35deg",
-        "transparent",
-        "transparent 6px",
-        `${theme.palette.common.black} 6px`,
-        `${theme.palette.common.black} 12px`,
-      ].join(",")})`,
-    },
-  }),
-}));
-
-export type LayoutActionMenuItem =
-  | {
-      type: "item";
-      text: string;
-      secondaryText?: string;
-      key: string;
-      onClick?: (event: React.MouseEvent<HTMLLIElement>) => void;
-      disabled?: boolean;
-      debug?: boolean;
-      "data-testid"?: string;
-    }
-  | {
-      type: "divider";
-      key: string;
-      debug?: boolean;
-    }
-  | {
-      type: "header";
-      key: string;
-      text: string;
-      debug?: boolean;
-    };
+import { StyledListItem, StyledMenuItem } from "./LayoutRow.style";
+import { LayoutActionMenuItem } from "./types";
 
 export default React.memo(function LayoutRow({
   layout,
@@ -191,32 +107,26 @@ export default React.memo(function LayoutRow({
     if (response !== "ok") {
       return;
     }
-
     onRevert(layout);
   }, [confirm, layout, multiSelection, onRevert]);
-
-  const makePersonalCopyAction = useCallback(() => {
-    onMakePersonalCopy(layout);
-  }, [layout, onMakePersonalCopy]);
 
   const renameAction = useCallback(() => {
     setNameFieldValue(layout.name);
     setEditingName(true);
   }, [layout]);
 
-  const onClick = useCallback(
-    (event: MouseEvent) => {
-      onSelect(layout, { selectedViaClick: true, event });
-    },
-    [layout, onSelect],
-  );
-
   const duplicateAction = useCallback(() => {
-    onDuplicate(layout);
-  }, [layout, onDuplicate]);
+    if (layoutIsShared(layout)) {
+      onMakePersonalCopy(layout);
+    } else {
+      onDuplicate(layout);
+    }
+  }, [layout, onDuplicate, onMakePersonalCopy]);
+
   const shareAction = useCallback(() => {
     onShare(layout);
   }, [layout, onShare]);
+
   const exportAction = useCallback(() => {
     onExport(layout);
   }, [layout, onExport]);
@@ -301,8 +211,9 @@ export default React.memo(function LayoutRow({
       disabled: (layoutIsShared(layout) && !isOnline) || multiSelection,
       secondaryText: layoutIsShared(layout) && !isOnline ? "Offline" : undefined,
     },
-    // For shared layouts, duplicate first requires saving or discarding changes
-    !(layoutIsShared(layout) && hasModifications) && {
+    // For shared layouts, "Make a personal copy" is always available
+    // For personal layouts, "Duplicate" is available if no modifications
+    (layoutIsShared(layout) || !hasModifications) && {
       type: "item",
       key: "duplicate",
       text:
@@ -327,6 +238,7 @@ export default React.memo(function LayoutRow({
       text: "Export…",
       disabled: multiSelection,
       onClick: exportAction,
+      "data-testid": "export-layout",
     },
     { key: "divider_1", type: "divider" },
     {
@@ -338,7 +250,7 @@ export default React.memo(function LayoutRow({
     },
   ];
 
-  if (hasModifications || anySelectedModifiedLayouts) {
+  if (hasModifications) {
     const sectionItems: LayoutActionMenuItem[] = [
       {
         type: "item",
@@ -352,19 +264,12 @@ export default React.memo(function LayoutRow({
         type: "item",
         key: "revert",
         text: "Revert",
-        onClick: confirmRevert,
+        onClick: () => {
+          void confirmRevert();
+        },
         disabled: deletedOnServer,
       },
     ];
-    if (layoutIsShared(layout)) {
-      sectionItems.push({
-        type: "item",
-        key: "copy_to_personal",
-        text: "Make a personal copy",
-        disabled: multiSelection,
-        onClick: makePersonalCopyAction,
-      });
-    }
 
     const unsavedChangesMessage = anySelectedModifiedLayouts
       ? "These layouts have unsaved changes"
@@ -385,19 +290,21 @@ export default React.memo(function LayoutRow({
     (item): item is LayoutActionMenuItem => typeof item === "object",
   );
 
-  const actionIcon = useMemo(
-    () =>
-      deletedOnServer ? (
-        <ErrorIcon fontSize="small" color="error" />
-      ) : hasModifications ? (
+  const actionIcon = useMemo(() => {
+    let icon;
+    if (deletedOnServer) {
+      icon = <ErrorIcon fontSize="small" color="error" />;
+    } else if (hasModifications) {
+      icon = (
         <SvgIcon fontSize="small" color="primary">
           <circle cx={12} cy={12} r={4} />
         </SvgIcon>
-      ) : (
-        <MoreVertIcon fontSize="small" />
-      ),
-    [deletedOnServer, hasModifications],
-  );
+      );
+    } else {
+      icon = <MoreVertIcon fontSize="small" />;
+    }
+    return icon;
+  }, [deletedOnServer, hasModifications]);
 
   useEffect(() => {
     if (editingName) {
@@ -430,7 +337,10 @@ export default React.memo(function LayoutRow({
         data-testid="layout-list-item"
         selected={selected || multiSelectedIds.includes(layout.id)}
         onSubmit={onSubmit}
-        onClick={editingName ? undefined : onClick}
+        onClick={(event) => {
+          // Toggle selection for multi-select support
+          onSelect(layout, { selectedViaClick: true, event });
+        }}
         onContextMenu={editingName ? undefined : handleContextMenu}
         component="form"
       >
@@ -475,9 +385,11 @@ export default React.memo(function LayoutRow({
         }
         anchorEl={contextMenuTarget?.element}
         onClose={handleClose}
-        MenuListProps={{
-          "aria-labelledby": "layout-actions",
-          dense: true,
+        slotProps={{
+          list: {
+            "aria-labelledby": "layout-actions",
+            dense: true,
+          },
         }}
       >
         {filteredItems.map((item) => {

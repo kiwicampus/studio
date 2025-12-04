@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -102,9 +102,9 @@ class StudioAppUpdater extends EventEmitter<EventTypes> {
   async #maybeCheckForUpdates(): Promise<void> {
     try {
       // The user may have changed the app update setting so we load it again
-      const appUpdatesEnabled = getAppSetting<boolean>(AppSetting.UPDATES_ENABLED);
+      const appUpdatesEnabled = getAppSetting<boolean>(AppSetting.UPDATES_ENABLED) ?? false;
 
-      if (appUpdatesEnabled ?? true) {
+      if (appUpdatesEnabled) {
         log.info("Checking for updates");
         await autoUpdater.checkForUpdatesAndNotify();
       }

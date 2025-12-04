@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -12,12 +12,12 @@ import { Immutable, MessageEvent, Time } from "@lichtblick/suite";
 
 import type {
   GetBackfillMessagesArgs,
-  IIterableSource,
   IMessageCursor,
-  Initalization,
+  Initialization,
   IteratorResult,
   MessageIteratorArgs,
   IterableSourceInitializeArgs,
+  IDeserializedIterableSource,
 } from "./IIterableSource";
 import type { WorkerIterableSourceWorker } from "./WorkerIterableSourceWorker";
 
@@ -28,17 +28,19 @@ type ConstructorArgs = {
   initArgs: IterableSourceInitializeArgs;
 };
 
-export class WorkerIterableSource implements IIterableSource {
+export class WorkerIterableSource implements IDeserializedIterableSource {
   readonly #args: ConstructorArgs;
 
   #sourceWorkerRemote?: Comlink.Remote<WorkerIterableSourceWorker>;
   #disposeRemote?: () => void;
 
+  public readonly sourceType = "deserialized";
+
   public constructor(args: ConstructorArgs) {
     this.#args = args;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     this.#disposeRemote?.();
 
     // Note: this launches the worker.

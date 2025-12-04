@@ -1,45 +1,50 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { MessageDefinition } from "@lichtblick/message-definition";
 import { ROS2_TO_DEFINITIONS, Rosbag2, SqliteSqljs } from "@lichtblick/rosbag2-web";
 import { stringify } from "@lichtblick/rosmsg";
 import { Time, add as addTime } from "@lichtblick/rostime";
 import { MessageEvent } from "@lichtblick/suite";
-import { estimateObjectSize } from "@lichtblick/suite-base/players/messageMemoryEstimation";
-import {
-  MessageDefinitionsByTopic,
-  ParsedMessageDefinitionsByTopic,
-  PlayerProblem,
-  Topic,
-  TopicStats,
-} from "@lichtblick/suite-base/players/types";
+import { PlayerAlert, TopicStats } from "@lichtblick/suite-base/players/types";
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 import { basicDatatypes } from "@lichtblick/suite-base/util/basicDatatypes";
 
 import {
   GetBackfillMessagesArgs,
-  IIterableSource,
-  Initalization,
+  ISerializedIterableSource,
+  Initialization,
   IteratorResult,
   MessageIteratorArgs,
+  TopicWithDecodingInfo,
 } from "../IIterableSource";
 
-export class RosDb3IterableSource implements IIterableSource {
+function dataTypeToFullName(dataType: string): string {
+  const parts = dataType.split("/");
+  if (parts.length === 2) {
+    return `${parts[0]!}/msg/${parts[1]!}`;
+  }
+  return dataType;
+}
+
+export class RosDb3IterableSource implements ISerializedIterableSource {
   #files: File[];
   #bag?: Rosbag2;
   #start: Time = { sec: 0, nsec: 0 };
   #end: Time = { sec: 0, nsec: 0 };
-  #messageSizeEstimateByTopic: Record<string, number> = {};
+  #textEncoder = new TextEncoder();
+
+  public readonly sourceType = "serialized";
 
   public constructor(files: File[]) {
     this.#files = files;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     const res = await fetch(
       // foxglove-depcheck-used: babel-plugin-transform-import-meta
       new URL("@foxglove/sql.js/dist/sql-wasm.wasm", import.meta.url).toString(),
@@ -66,37 +71,61 @@ export class RosDb3IterableSource implements IIterableSource {
       throw new Error("Bag contains no messages");
     }
 
-    const problems: PlayerProblem[] = [];
-    const topics: Topic[] = [];
+    const alerts: PlayerAlert[] = [];
+    const topics: TopicWithDecodingInfo[] = [];
     const topicStats = new Map<string, TopicStats>();
     // ROS 2 .db3 files do not contain message definitions, so we can only support well-known ROS types.
     const datatypes: RosDatatypes = new Map([...ROS2_TO_DEFINITIONS, ...basicDatatypes]);
-    const messageDefinitionsByTopic: MessageDefinitionsByTopic = {};
-    const parsedMessageDefinitionsByTopic: ParsedMessageDefinitionsByTopic = {};
 
     for (const topicDef of topicDefs) {
       const numMessages = messageCounts.get(topicDef.name);
 
-      topics.push({ name: topicDef.name, schemaName: topicDef.type });
+      const topic: TopicWithDecodingInfo = {
+        name: topicDef.name,
+        schemaName: topicDef.type,
+        messageEncoding: topicDef.serializationFormat,
+      };
+
       if (numMessages != undefined) {
         topicStats.set(topicDef.name, { numMessages });
       }
 
-      const parsedMsgdef = datatypes.get(topicDef.type);
+      const parsedMsgdef = ROS2_TO_DEFINITIONS.get(topicDef.type);
       if (parsedMsgdef == undefined) {
-        problems.push({
+        alerts.push({
           severity: "warn",
           message: `Topic "${topicDef.name}" has unsupported datatype "${topicDef.type}"`,
-          tip: "ROS 2 .db3 files do not contain message definitions, so only well-known ROS types are supported in Lichtblick. As a workaround, you can convert the db3 file to mcap using the mcap CLI. For more information, see: https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros2",
+          tip: "ROS 2 .db3 files do not contain message definitions, so only well-known ROS types are supported in Foxglove Studio. As a workaround, you can convert the db3 file to mcap using the mcap CLI. For more information, see: https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros2",
         });
-        continue;
-      }
+      } else {
+        // Create the full gendeps-like message definition so that parseChannel() can parse it.
+        const typesToProcess = [parsedMsgdef];
+        const typesForMessage: MessageDefinition[] = [];
+        const seenTypes = new Set<string>();
+        while (typesToProcess.length > 0) {
+          const rosType = typesToProcess.shift()!;
+          typesForMessage.push(rosType);
+          for (const { type, isComplex } of rosType.definitions) {
+            const fullTypeName = dataTypeToFullName(type);
+            if (isComplex === true && !seenTypes.has(fullTypeName)) {
+              const newComplexType = ROS2_TO_DEFINITIONS.get(fullTypeName);
+              if (!newComplexType) {
+                // Should in theory never happen as these are all well-known types
+                throw new Error(
+                  `invariant: Subtype ${fullTypeName} of type ${rosType.name} not found.`,
+                );
+              }
+              typesToProcess.push(newComplexType);
+              seenTypes.add(fullTypeName);
+            }
+          }
+        }
 
-      const fullParsedMessageDefinitions = [parsedMsgdef];
-      const messageDefinition = stringify(fullParsedMessageDefinitions);
-      datatypes.set(topicDef.type, { name: topicDef.type, definitions: parsedMsgdef.definitions });
-      messageDefinitionsByTopic[topicDef.name] = messageDefinition;
-      parsedMessageDefinitionsByTopic[topicDef.name] = fullParsedMessageDefinitions;
+        const messageDefinition = stringify(typesForMessage);
+        topic.schemaData = this.#textEncoder.encode(messageDefinition);
+        topic.schemaEncoding = "ros2msg";
+        topics.push(topic);
+      }
     }
 
     this.#start = start;
@@ -107,7 +136,7 @@ export class RosDb3IterableSource implements IIterableSource {
       topicStats,
       start,
       end,
-      problems,
+      alerts,
       profile: "ros2",
       datatypes,
       publishersByTopic: new Map(),
@@ -116,7 +145,7 @@ export class RosDb3IterableSource implements IIterableSource {
 
   public async *messageIterator(
     opt: MessageIteratorArgs,
-  ): AsyncIterableIterator<Readonly<IteratorResult>> {
+  ): AsyncIterableIterator<Readonly<IteratorResult<Uint8Array>>> {
     if (this.#bag == undefined) {
       throw new Error(`Rosbag2DataProvider is not initialized`);
     }
@@ -136,29 +165,25 @@ export class RosDb3IterableSource implements IIterableSource {
       startTime: start,
       endTime: inclusiveEndTime,
       topics: Array.from(topics.keys()),
+      rawMessages: true,
     });
     for await (const msg of msgIterator) {
-      // Lookup the size estimate for this topic or compute it if not found in the cache.
-      let msgSizeEstimate = this.#messageSizeEstimateByTopic[msg.topic.name];
-      if (msgSizeEstimate == undefined) {
-        msgSizeEstimate = estimateObjectSize(msg.value);
-        this.#messageSizeEstimateByTopic[msg.topic.name] = msgSizeEstimate;
-      }
-
       yield {
         type: "message-event",
         msgEvent: {
           topic: msg.topic.name,
           receiveTime: msg.timestamp,
-          message: msg.value,
-          sizeInBytes: Math.max(msg.data.byteLength, msgSizeEstimate),
+          message: msg.data,
+          sizeInBytes: msg.data.byteLength,
           schemaName: msg.topic.type,
         },
       };
     }
   }
 
-  public async getBackfillMessages(_args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+  public async getBackfillMessages(
+    _args: GetBackfillMessagesArgs,
+  ): Promise<MessageEvent<Uint8Array>[]> {
     return [];
   }
 }

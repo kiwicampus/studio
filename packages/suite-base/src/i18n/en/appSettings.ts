@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -24,10 +24,12 @@ export const appSettings = {
   layoutDebuggingDescription: "Show extra controls for developing and debugging layout storage.",
   light: "Light",
   messageRate: "Message rate",
+  stepSize: "Step size",
   memoryUseIndicator: "Memory use indicator",
   memoryUseIndicatorDescription: "Show the app memory use in the sidebar.",
-  newAppMenu: "Enable unified navigation",
-  newAppMenuDescription: "Show the new menu and navigation.",
+  syncLichtblickInstances: "Sync Lichtblick instances",
+  syncLichtblickInstancesDescription:
+    "Activates the button in the right lower corner of the application to sync Lichtblick instances opened.",
   noExperimentalFeatures: "Currently there are no experimental features.",
   openLinksIn: "Open links in",
   ros: "ROS",

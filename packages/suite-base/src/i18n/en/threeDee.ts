@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -27,6 +27,8 @@ export const threeDee = {
     "The coordinate frame to place the camera in. The camera position and orientation will be relative to the origin of this frame.",
   editable: "Editable",
   enablePreloading: "Enable preloading",
+  enablePreloadingTooltip:
+    "Please be aware that performance may be impacted when turning preloading on.",
   fixed: "Fixed",
   followMode: "Follow mode",
   followModeHelp: "Change the camera behavior during playback to follow the display frame or not.",

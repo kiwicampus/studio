@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 import { makeStyles } from "tss-react/mui";
@@ -69,6 +69,19 @@ export const useStyles = makeStyles<void, "error">()((theme, _params, classes) =
       },
       "&:first-of-type": {
         borderRadius: theme.shape.borderRadius,
+      },
+    },
+  },
+  slider: {
+    color: theme.palette.secondary.main,
+    top: "2px",
+    height: 3,
+    width: "calc(100% - 30px)",
+    left: "10px",
+
+    "& .MuiSlider-thumb": {
+      "&:focus, &:hover, &.Mui-active, &.Mui-focusVisible": {
+        boxShadow: "none",
       },
     },
   },

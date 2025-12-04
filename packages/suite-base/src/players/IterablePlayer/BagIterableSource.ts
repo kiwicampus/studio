@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,15 +8,8 @@
 import { Bag, Filelike } from "@lichtblick/rosbag";
 import { BlobReader } from "@lichtblick/rosbag/web";
 import { parse as parseMessageDefinition } from "@lichtblick/rosmsg";
-import { MessageReader } from "@lichtblick/rosmsg-serialization";
 import { compare } from "@lichtblick/rostime";
-import { estimateObjectSize } from "@lichtblick/suite-base/players/messageMemoryEstimation";
-import {
-  MessageEvent,
-  PlayerProblem,
-  Topic,
-  TopicStats,
-} from "@lichtblick/suite-base/players/types";
+import { MessageEvent, PlayerAlert, TopicStats } from "@lichtblick/suite-base/players/types";
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 import BrowserHttpReader from "@lichtblick/suite-base/util/BrowserHttpReader";
 import CachedFilelike from "@lichtblick/suite-base/util/CachedFilelike";
@@ -26,27 +19,29 @@ import decompressLZ4 from "@lichtblick/wasm-lz4";
 
 import {
   GetBackfillMessagesArgs,
-  IIterableSource,
-  Initalization,
+  Initialization,
+  ISerializedIterableSource,
   IteratorResult,
   MessageIteratorArgs,
+  TopicWithDecodingInfo,
 } from "./IIterableSource";
 
 type BagSource = { type: "file"; file: File } | { type: "remote"; url: string };
 
-export class BagIterableSource implements IIterableSource {
+export class BagIterableSource implements ISerializedIterableSource {
   readonly #source: BagSource;
 
   #bag: Bag | undefined;
-  #readersByConnectionId = new Map<number, MessageReader>();
   #datatypesByConnectionId = new Map<number, string>();
-  #messageSizeEstimateByTopic: Record<string, number> = {};
+  #textEncoder = new TextEncoder();
+
+  public readonly sourceType = "serialized";
 
   public constructor(source: BagSource) {
     this.#source = source;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     await decompressLZ4.isLoaded;
     const bzip2 = await Bzip2.init();
 
@@ -56,7 +51,7 @@ export class BagIterableSource implements IIterableSource {
       const fileReader = new BrowserHttpReader(bagUrl);
       const remoteReader = new CachedFilelike({
         fileReader,
-        cacheSizeInBytes: 1024 * 1024 * 500, // 500MiB
+        cacheSizeInBytes: 1024 * 1024 * 200, // 200MiB
         keepReconnectingCallback: (_reconnecting) => {
           // no-op?
         },
@@ -84,7 +79,7 @@ export class BagIterableSource implements IIterableSource {
 
     await this.#bag.open();
 
-    const problems: PlayerProblem[] = [];
+    const alerts: PlayerAlert[] = [];
     const chunksOverlapCount = getBagChunksOverlapCount(this.#bag.chunkInfos);
     // If >25% of the chunks overlap, show a warning. It's common for a small number of chunks to overlap
     // since it looks like `rosbag record` has a bit of a race condition, and that's not too terrible, so
@@ -94,7 +89,7 @@ export class BagIterableSource implements IIterableSource {
         this.#bag.chunkInfos.length
       }). This results in more memory use during playback.`;
       const tip = "Re-sort the messages in your bag by receive time.";
-      problems.push({
+      alerts.push({
         severity: "warn",
         message,
         tip,
@@ -104,14 +99,17 @@ export class BagIterableSource implements IIterableSource {
     const numMessagesByConnectionIndex: number[] = new Array(this.#bag.connections.size).fill(0);
     this.#bag.chunkInfos.forEach((info) => {
       info.connections.forEach(({ conn, count }) => {
-        numMessagesByConnectionIndex[conn] = (numMessagesByConnectionIndex[conn] ?? 0) + count;
+        if (numMessagesByConnectionIndex[conn] == undefined) {
+          numMessagesByConnectionIndex[conn] = 0;
+        }
+        numMessagesByConnectionIndex[conn] += count;
       });
     });
 
     const datatypes: RosDatatypes = new Map();
-    const topics = new Map<string, Topic>();
+    const topics = new Map<string, TopicWithDecodingInfo>();
     const topicStats = new Map<string, TopicStats>();
-    const publishersByTopic: Initalization["publishersByTopic"] = new Map();
+    const publishersByTopic: Initialization["publishersByTopic"] = new Map();
     for (const [id, connection] of this.#bag.connections) {
       const schemaName = connection.type;
       if (!schemaName) {
@@ -127,7 +125,7 @@ export class BagIterableSource implements IIterableSource {
 
       const existingTopic = topics.get(connection.topic);
       if (existingTopic && existingTopic.schemaName !== schemaName) {
-        problems.push({
+        alerts.push({
           severity: "warn",
           message: `Conflicting datatypes on topic (${connection.topic}): ${schemaName}, ${existingTopic.schemaName}`,
           tip: `Studio requires all connections on a topic to have the same datatype. Make sure all your nodes are publishing the same message on ${connection.topic}.`,
@@ -135,7 +133,13 @@ export class BagIterableSource implements IIterableSource {
       }
 
       if (!existingTopic) {
-        topics.set(connection.topic, { name: connection.topic, schemaName });
+        topics.set(connection.topic, {
+          name: connection.topic,
+          schemaName,
+          messageEncoding: "ros1",
+          schemaData: this.#textEncoder.encode(connection.messageDefinition),
+          schemaEncoding: "ros1msg",
+        });
       }
 
       // Update the message count for this topic
@@ -145,8 +149,6 @@ export class BagIterableSource implements IIterableSource {
       topicStats.set(connection.topic, { numMessages });
 
       const parsedDefinition = parseMessageDefinition(connection.messageDefinition);
-      const reader = new MessageReader(parsedDefinition);
-      this.#readersByConnectionId.set(id, reader);
 
       for (const definition of parsedDefinition) {
         // In parsed definitions, the first definition (root) does not have a name as is meant to
@@ -166,7 +168,7 @@ export class BagIterableSource implements IIterableSource {
       topicStats,
       start: this.#bag.startTime ?? { sec: 0, nsec: 0 },
       end: this.#bag.endTime ?? { sec: 0, nsec: 0 },
-      problems,
+      alerts,
       profile: "ros1",
       datatypes,
       publishersByTopic,
@@ -175,13 +177,13 @@ export class BagIterableSource implements IIterableSource {
 
   public async *messageIterator(
     opt: MessageIteratorArgs,
-  ): AsyncIterableIterator<Readonly<IteratorResult>> {
+  ): AsyncIterableIterator<Readonly<IteratorResult<Uint8Array>>> {
     yield* this.#messageIterator({ ...opt, reverse: false });
   }
 
   async *#messageIterator(
     opt: MessageIteratorArgs & { reverse: boolean },
-  ): AsyncGenerator<Readonly<IteratorResult>> {
+  ): AsyncGenerator<Readonly<IteratorResult<Uint8Array>>> {
     if (!this.#bag) {
       throw new Error("Invariant: uninitialized");
     }
@@ -194,10 +196,8 @@ export class BagIterableSource implements IIterableSource {
       start: opt.start,
     });
 
-    const readersByConnectionId = this.#readersByConnectionId;
     for await (const bagMsgEvent of iterator) {
       const connectionId = bagMsgEvent.connectionId;
-      const reader = readersByConnectionId.get(connectionId);
 
       if (end && compare(bagMsgEvent.timestamp, end) > 0) {
         return;
@@ -206,9 +206,9 @@ export class BagIterableSource implements IIterableSource {
       const schemaName = this.#datatypesByConnectionId.get(connectionId);
       if (!schemaName) {
         yield {
-          type: "problem",
+          type: "alert",
           connectionId,
-          problem: {
+          alert: {
             severity: "error",
             message: `Cannot missing datatype for connection id ${connectionId}`,
             tip: `Check that your bag file is well-formed. It should have a connection record for every connection id referenced from a message record.`,
@@ -217,49 +217,29 @@ export class BagIterableSource implements IIterableSource {
         return;
       }
 
-      if (reader) {
-        // bagMsgEvent.data is a view on top of the entire chunk. To avoid keeping references for
-        // chunks (which will fill up memory space when we cache messages) when make a copy of the
-        // data.
-        const dataCopy = bagMsgEvent.data.slice();
-        const parsedMessage = reader.readMessage(dataCopy);
+      // bagMsgEvent.data is a view on top of the entire chunk. To avoid keeping references for
+      // chunks (which will fill up memory space when we cache messages) when make a copy of the
+      // data.
+      const dataCopy = bagMsgEvent.data.slice();
 
-        // Lookup the size estimate for this topic or compute it if not found in the cache.
-        let msgSizeEstimate = this.#messageSizeEstimateByTopic[bagMsgEvent.topic];
-        if (msgSizeEstimate == undefined) {
-          msgSizeEstimate = estimateObjectSize(parsedMessage);
-          this.#messageSizeEstimateByTopic[bagMsgEvent.topic] = msgSizeEstimate;
-        }
-
-        yield {
-          type: "message-event",
-          msgEvent: {
-            topic: bagMsgEvent.topic,
-            receiveTime: bagMsgEvent.timestamp,
-            sizeInBytes: Math.max(bagMsgEvent.data.byteLength, msgSizeEstimate),
-            message: parsedMessage,
-            schemaName,
-          },
-        };
-      } else {
-        yield {
-          type: "problem",
-          connectionId,
-          problem: {
-            severity: "error",
-            message: `Cannot deserialize message for missing connection id ${connectionId}`,
-            tip: `Check that your bag file is well-formed. It should have a connection record for every connection id referenced from a message record.`,
-          },
-        };
-      }
+      yield {
+        type: "message-event",
+        msgEvent: {
+          topic: bagMsgEvent.topic,
+          receiveTime: bagMsgEvent.timestamp,
+          sizeInBytes: dataCopy.byteLength,
+          message: dataCopy,
+          schemaName,
+        },
+      };
     }
   }
 
   public async getBackfillMessages({
     topics,
     time,
-  }: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
-    const messages: MessageEvent[] = [];
+  }: GetBackfillMessagesArgs): Promise<MessageEvent<Uint8Array>[]> {
+    const messages: MessageEvent<Uint8Array>[] = [];
     for (const entry of topics.entries()) {
       // NOTE: An iterator is made for each topic to get the latest message on that topic.
       // An single iterator for all the topics could result in iterating through many

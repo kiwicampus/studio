@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,6 +8,7 @@
 import { createContext } from "react";
 import { StoreApi, useStore } from "zustand";
 
+import { CameraModelsMap } from "@lichtblick/den/image/types";
 import { useGuaranteedContext } from "@lichtblick/hooks";
 import {
   ExtensionPanelRegistration,
@@ -15,32 +16,93 @@ import {
   PanelSettings,
   RegisterMessageConverterArgs,
 } from "@lichtblick/suite";
+import { ExtensionSettings } from "@lichtblick/suite-base/components/PanelSettings/types";
 import { TopicAliasFunctions } from "@lichtblick/suite-base/players/TopicAliasingPlayer/TopicAliasingPlayer";
-import { ExtensionInfo, ExtensionNamespace } from "@lichtblick/suite-base/types/Extensions";
+import { TypeExtensionLoader } from "@lichtblick/suite-base/services/extension/IExtensionLoader";
+import { Namespace } from "@lichtblick/suite-base/types";
+import { ExtensionInfo } from "@lichtblick/suite-base/types/Extensions";
+
+export type ExtensionData = {
+  buffer: Uint8Array;
+  file?: File;
+  namespace?: Namespace;
+};
 
 export type RegisteredPanel = {
+  extensionId: string;
   extensionName: string;
-  extensionNamespace?: ExtensionNamespace;
+  extensionNamespace?: Namespace;
   registration: ExtensionPanelRegistration;
+};
+
+export type InstallExtensionsResult = {
+  success: boolean;
+  info?: ExtensionInfo;
+  error?: unknown;
+  extensionName?: string;
+  loaderResults?: (Pick<LoadExtensionsResult, "loaderType" | "success"> & { error?: unknown })[];
+};
+
+export type LoadExtensionsResult = {
+  loaderType: TypeExtensionLoader;
+  success: boolean;
+  error?: Error;
+  info?: ExtensionInfo;
+};
+
+export type UseInstallingExtensionsState = {
+  installFoxeExtensions: (extensionsData: ExtensionData[]) => Promise<void>;
+};
+
+export type UseInstallingExtensionsStateProps = {
+  isPlaying: boolean;
+  playerEvents: {
+    play: (() => void) | undefined;
+  };
+};
+
+export type ExtensionSnackbar = {
+  name: string;
+  namespace: Namespace;
+  error: string;
+  success: string;
+  warning: string;
 };
 
 export type ExtensionCatalog = Immutable<{
   downloadExtension: (url: string) => Promise<Uint8Array>;
-  installExtension: (
-    namespace: ExtensionNamespace,
-    foxeFileData: Uint8Array,
-  ) => Promise<ExtensionInfo>;
-  refreshExtensions: () => Promise<void>;
-  uninstallExtension: (namespace: ExtensionNamespace, id: string) => Promise<void>;
+  installExtensions: (
+    namespace: Namespace,
+    extensions: ExtensionData[],
+  ) => Promise<InstallExtensionsResult[]>;
+  isExtensionInstalled: (extensionId: string) => boolean;
+  markExtensionAsInstalled: (extensionId: string) => void;
+  mergeState: (info: ExtensionInfo, contributionPoints: ContributionPoints) => void;
+  refreshAllExtensions: () => Promise<void>;
+  uninstallExtension: (namespace: Namespace, id: string) => Promise<void>;
+  unMarkExtensionAsInstalled: (extensionId: string) => void;
 
+  loadedExtensions: Set<string>;
   installedExtensions: undefined | ExtensionInfo[];
   installedPanels: undefined | Record<string, RegisteredPanel>;
-  installedMessageConverters:
-    | undefined
-    | Omit<RegisterMessageConverterArgs<unknown>, "panelSettings">[];
+  installedMessageConverters: undefined | Omit<MessageConverter, "panelSettings">[];
   installedTopicAliasFunctions: undefined | TopicAliasFunctions;
-  panelSettings: undefined | Record<string, Record<string, PanelSettings<unknown>>>;
+  installedCameraModels: CameraModelsMap;
+  panelSettings: undefined | ExtensionSettings;
 }>;
+
+export type MessageConverter = RegisterMessageConverterArgs<unknown> & {
+  extensionNamespace?: Namespace;
+  extensionId?: string;
+};
+
+export type ContributionPoints = {
+  panels: Record<string, RegisteredPanel>;
+  messageConverters: MessageConverter[];
+  topicAliasFunctions: TopicAliasFunctions;
+  panelSettings: ExtensionSettings;
+  cameraModels: CameraModelsMap;
+};
 
 export const ExtensionCatalogContext = createContext<undefined | StoreApi<ExtensionCatalog>>(
   undefined,

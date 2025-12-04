@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -15,6 +15,7 @@
 //   You may not use this file except in compliance with the License.
 
 import { Metadata, ParameterValue } from "@lichtblick/suite";
+import { IteratorResult } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
 import { freezeMetadata } from "@lichtblick/suite-base/players/IterablePlayer/freezeMetadata";
 import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
@@ -61,6 +62,12 @@ export default class FakePlayer implements Player {
       progress: progress ?? {},
       activeData,
     });
+  }
+
+  public getBatchIterator(
+    _topic: string,
+  ): AsyncIterableIterator<Readonly<IteratorResult>> | undefined {
+    return undefined;
   }
 
   public close = (): void => {

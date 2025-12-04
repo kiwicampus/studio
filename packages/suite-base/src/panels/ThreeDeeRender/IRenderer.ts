@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,6 +8,7 @@
 import EventEmitter from "eventemitter3";
 import * as THREE from "three";
 
+import { CameraModelsMap } from "@lichtblick/den/image/types";
 import {
   Immutable,
   MessageEvent,
@@ -96,6 +97,8 @@ export type ImageModeConfig = Partial<ColorModeSettings> & {
   synchronize?: boolean;
   /** Rotation */
   rotation?: 0 | 90 | 180 | 270;
+  brightness?: number;
+  contrast?: number;
   flipHorizontal?: boolean;
   flipVertical?: boolean;
   /** Minimum (black) value for single-channel images */
@@ -217,6 +220,7 @@ export interface IRenderer extends EventEmitter<RendererEvents> {
   readonly interfaceMode: InterfaceMode;
   readonly gl: THREE.WebGLRenderer;
   readonly testOptions: TestOptions;
+  customCameraModels: CameraModelsMap;
   maxLod: DetailLevel;
   config: Immutable<RendererConfig>;
   settings: SettingsManager;
@@ -335,6 +339,8 @@ export interface IRenderer extends EventEmitter<RendererEvents> {
   updateCustomLayersCount(): void;
 
   setCameraState(cameraState: CameraState): void;
+
+  setCustomCameraModels(newCameraModels: CameraModelsMap): void;
 
   getCameraState(): CameraState | undefined;
 

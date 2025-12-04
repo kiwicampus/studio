@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -6,70 +6,77 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import Logger from "@lichtblick/log";
-import { ExtensionInfo, ExtensionLoader, ExtensionNamespace } from "@lichtblick/suite-base";
+import {
+  ExtensionInfo,
+  IExtensionLoader,
+  Namespace,
+  TypeExtensionLoader,
+  InstallExtensionProps,
+} from "@lichtblick/suite-base";
 
-import { Desktop } from "../../common/types";
+import { Desktop, DesktopExtension, LoadedExtension } from "../../common/types";
 
 const log = Logger.getLogger(__filename);
 
-export class DesktopExtensionLoader implements ExtensionLoader {
+export class DesktopExtensionLoader implements IExtensionLoader {
   #bridge?: Desktop;
-  public readonly namespace: ExtensionNamespace = "local";
+  public readonly namespace: Namespace = "local";
+  public readonly type: TypeExtensionLoader = "filesystem";
 
   public constructor(bridge: Desktop) {
     this.#bridge = bridge;
+  }
+
+  public async getExtension(id: string): Promise<ExtensionInfo | undefined> {
+    const storedExtension = (await this.getExtensions()).find((extension) => extension.id === id);
+    return storedExtension;
   }
 
   public async getExtensions(): Promise<ExtensionInfo[]> {
     const extensionList = (await this.#bridge?.getExtensions()) ?? [];
     log.debug(`Loaded ${extensionList.length} extension(s)`);
 
-    const extensions = extensionList.map((item): ExtensionInfo => {
-      const pkgInfo = item.packageJson as ExtensionInfo;
+    const extensions = extensionList.map((extension: DesktopExtension): ExtensionInfo => {
+      const pkgInfo = extension.packageJson as ExtensionInfo;
       return {
-        id: item.id,
+        ...pkgInfo,
+        id: extension.id,
         name: pkgInfo.displayName,
         namespace: this.namespace,
         // Qualified name is display name for backwards compatibility with existing layouts.
         qualifiedName: pkgInfo.displayName,
-        displayName: pkgInfo.displayName,
-        description: pkgInfo.description,
-        publisher: pkgInfo.publisher,
-        homepage: pkgInfo.homepage,
-        license: pkgInfo.license,
-        version: pkgInfo.version,
-        keywords: pkgInfo.keywords,
+        readme: extension.readme,
+        changelog: extension.changelog,
       };
     });
 
     return extensions;
   }
 
-  public async loadExtension(id: string): Promise<string> {
-    return (await this.#bridge?.loadExtension(id)) ?? "";
+  public async loadExtension(id: string): Promise<LoadedExtension> {
+    if (!this.#bridge) {
+      throw new Error("Cannot load extension without a desktopBridge");
+    }
+    return await this.#bridge.loadExtension(id);
   }
 
-  public async installExtension(foxeFileData: Uint8Array): Promise<ExtensionInfo> {
+  public async installExtension({ foxeFileData }: InstallExtensionProps): Promise<ExtensionInfo> {
     if (this.#bridge == undefined) {
       throw new Error(`Cannot install extension without a desktopBridge`);
     }
-    const detail = await this.#bridge.installExtension(foxeFileData);
 
-    const pkgInfo = detail.packageJson as ExtensionInfo;
+    const extension: DesktopExtension = await this.#bridge.installExtension(foxeFileData);
+    const pkgInfo = extension.packageJson as ExtensionInfo;
 
     return {
-      id: detail.id,
+      ...pkgInfo,
+      id: extension.id,
       name: pkgInfo.displayName,
       namespace: this.namespace,
       // Qualified name is display name for backwards compatibility with existing layouts.
       qualifiedName: pkgInfo.displayName,
-      displayName: pkgInfo.displayName,
-      description: pkgInfo.description,
-      publisher: pkgInfo.publisher,
-      homepage: pkgInfo.homepage,
-      license: pkgInfo.license,
-      version: pkgInfo.version,
-      keywords: pkgInfo.keywords,
+      readme: extension.readme,
+      changelog: extension.changelog,
     };
   }
 

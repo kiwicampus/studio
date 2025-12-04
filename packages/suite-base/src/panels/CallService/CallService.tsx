@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -14,6 +14,7 @@ import { PanelExtensionContext, SettingsTreeAction } from "@lichtblick/suite";
 import Stack from "@lichtblick/suite-base/components/Stack";
 import { Config } from "@lichtblick/suite-base/panels/CallService/types";
 import ThemeProvider from "@lichtblick/suite-base/theme/ThemeProvider";
+import { customTypography } from "@lichtblick/theme";
 
 import { defaultConfig, settingsActionReducer, useSettingsTree } from "./settings";
 
@@ -58,7 +59,7 @@ const useStyles = makeStyles<{ buttonColor?: string }>()((theme, { buttonColor }
         [`.${inputBaseClasses.input}`]: {
           height: "100% !important",
           lineHeight: 1.4,
-          fontFamily: theme.typography.fontMonospace,
+          fontFamily: customTypography.fontMonospace,
           overflow: "auto !important",
           resize: "none",
         },
@@ -107,6 +108,7 @@ function CallServiceContent(
   // onRender will setRenderDone to a done callback which we can invoke after we've rendered
   const [renderDone, setRenderDone] = useState<() => void>(() => () => {});
   const [state, setState] = useState<State | undefined>();
+  const [services, setServices] = useState<string[]>([]);
   const [config, setConfig] = useState<Config>(() => ({
     ...defaultConfig,
     ...(context.initialState as Partial<Config>),
@@ -122,10 +124,12 @@ function CallServiceContent(
 
   useEffect(() => {
     context.watch("colorScheme");
+    context.watch("services");
 
     context.onRender = (renderState, done) => {
       setRenderDone(() => done);
       setColorScheme(renderState.colorScheme ?? "light");
+      setServices([...(renderState.services ?? [])]);
     };
 
     return () => {
@@ -145,7 +149,7 @@ function CallServiceContent(
     [setConfig],
   );
 
-  const settingsTree = useSettingsTree(config);
+  const settingsTree = useSettingsTree(config, services);
   useEffect(() => {
     context.updatePanelSettingsEditor({
       actionHandler: settingsActionHandler,
@@ -266,7 +270,7 @@ function CallServiceContent(
               onClick={callServiceClicked}
               data-testid="call-service-button"
             >
-              {config.buttonText ? config.buttonText : `Call service ${config.serviceName ?? ""}`}
+              {config.buttonText ?? `Call service ${config.serviceName ?? ""}`}
             </Button>
           </span>
         </Tooltip>

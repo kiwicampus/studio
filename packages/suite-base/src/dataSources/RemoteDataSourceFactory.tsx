@@ -1,21 +1,19 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { Link } from "@mui/material";
 import path from "path";
 
+import { AllowedFileExtensions } from "@lichtblick/suite-base/constants/allowedFileExtensions";
 import {
   IDataSourceFactory,
   DataSourceFactoryInitializeArgs,
 } from "@lichtblick/suite-base/context/PlayerSelectionContext";
-import {
-  IterablePlayer,
-  WorkerIterableSource,
-} from "@lichtblick/suite-base/players/IterablePlayer";
+import { IterablePlayer } from "@lichtblick/suite-base/players/IterablePlayer";
+import { WorkerSerializedIterableSource } from "@lichtblick/suite-base/players/IterablePlayer/WorkerSerializedIterableSource";
 import { Player } from "@lichtblick/suite-base/players/types";
 
 const initWorkers: Record<string, () => Worker> = {
@@ -39,6 +37,18 @@ const initWorkers: Record<string, () => Worker> = {
   },
 };
 
+const fileTypesAllowed: AllowedFileExtensions[] = [
+  AllowedFileExtensions.BAG,
+  AllowedFileExtensions.MCAP,
+];
+
+export function checkExtensionMatch(fileExtension: string, previousExtension?: string): string {
+  if (previousExtension != undefined && previousExtension !== fileExtension) {
+    throw new Error("All sources need to be from the same type");
+  }
+  return fileExtension;
+}
+
 class RemoteDataSourceFactory implements IDataSourceFactory {
   public id = "remote-file";
 
@@ -51,16 +61,16 @@ class RemoteDataSourceFactory implements IDataSourceFactory {
   public type: IDataSourceFactory["type"] = "connection";
   public displayName = "Remote file";
   public iconName: IDataSourceFactory["iconName"] = "FileASPX";
-  public supportedFileTypes = [".bag", ".mcap"];
+  public supportedFileTypes = fileTypesAllowed;
   public description = "Open pre-recorded .bag or .mcap files from a remote location.";
   public docsLinks = [
     {
       label: "ROS 1",
-      url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros1#remote-file",
+      url: "https://lichtblick-suite.github.io/docs/connecting-to-data/ros1.html",
     },
     {
       label: "MCAP",
-      url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/mcap#remote-file",
+      url: "https://lichtblick-suite.github.io/docs/connecting-to-data/mcap.html",
     },
   ];
 
@@ -77,44 +87,40 @@ class RemoteDataSourceFactory implements IDataSourceFactory {
     ],
   };
 
-  public warning = (
-    <>
-      Loading large files over HTTP can be slow. For better performance, we recommend{" "}
-      <Link href="https://foxglove.dev/data-platform" target="_blank">
-        Foxglove Data Platform
-      </Link>
-      .
-    </>
-  );
+  public warning = "Loading large files over HTTP can be slow";
 
   public initialize(args: DataSourceFactoryInitializeArgs): Player | undefined {
-    const url = args.params?.url;
-    if (!url) {
-      throw new Error("Missing url argument");
+    if (args.params?.url == undefined) {
+      return;
     }
+    const urls = args.params.url.split(",");
 
-    const extension = path.extname(new URL(url).pathname);
-    const initWorker = initWorkers[extension];
-    if (!initWorker) {
-      throw new Error(`Unsupported extension: ${extension}`);
-    }
+    let nextExtension: string | undefined = undefined;
+    let extension = "";
 
-    const source = new WorkerIterableSource({ initWorker, initArgs: { url } });
+    urls.forEach((url) => {
+      extension = path.extname(new URL(url).pathname);
+      nextExtension = checkExtensionMatch(extension, nextExtension);
+    });
+
+    const initWorker = initWorkers[extension]!;
+
+    const source = new WorkerSerializedIterableSource({ initWorker, initArgs: { urls } });
 
     return new IterablePlayer({
       source,
-      name: url,
+      name: urls.join(),
       metricsCollector: args.metricsCollector,
-      // Use blank url params so the data source is set in the url
-      urlParams: { url },
+      urlParams: { urls },
       sourceId: this.id,
+      readAheadDuration: { sec: 10, nsec: 0 },
     });
   }
 
   #validateUrl(newValue: string): Error | undefined {
     try {
       const url = new URL(newValue);
-      const extension = path.extname(url.pathname);
+      const extension = path.extname(url.pathname) as AllowedFileExtensions;
 
       if (extension.length === 0) {
         return new Error("URL must end with a filename and extension");

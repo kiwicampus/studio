@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -9,6 +9,7 @@ import { McapIndexedReader, McapTypes } from "@mcap/core";
 
 import Log from "@lichtblick/log";
 import { loadDecompressHandlers } from "@lichtblick/mcap-support";
+import { Time } from "@lichtblick/rostime";
 import { MessageEvent } from "@lichtblick/suite-base/players/types";
 
 import { BlobReadable } from "./BlobReadable";
@@ -16,11 +17,11 @@ import { McapIndexedIterableSource } from "./McapIndexedIterableSource";
 import { McapUnindexedIterableSource } from "./McapUnindexedIterableSource";
 import { RemoteFileReadable } from "./RemoteFileReadable";
 import {
-  IIterableSource,
   IteratorResult,
-  Initalization,
+  Initialization,
   MessageIteratorArgs,
   GetBackfillMessagesArgs,
+  ISerializedIterableSource,
 } from "../IIterableSource";
 
 const log = Log.getLogger(__filename);
@@ -46,15 +47,17 @@ async function tryCreateIndexedReader(readable: McapTypes.IReadable) {
   }
 }
 
-export class McapIterableSource implements IIterableSource {
+export class McapIterableSource implements ISerializedIterableSource {
   #source: McapSource;
-  #sourceImpl: IIterableSource | undefined;
+  #sourceImpl: ISerializedIterableSource | undefined;
+
+  public readonly sourceType = "serialized";
 
   public constructor(source: McapSource) {
     this.#source = source;
   }
 
-  public async initialize(): Promise<Initalization> {
+  public async initialize(): Promise<Initialization> {
     const source = this.#source;
 
     switch (source.type) {
@@ -106,7 +109,7 @@ export class McapIterableSource implements IIterableSource {
 
   public messageIterator(
     opt: MessageIteratorArgs,
-  ): AsyncIterableIterator<Readonly<IteratorResult>> {
+  ): AsyncIterableIterator<Readonly<IteratorResult<Uint8Array>>> {
     if (!this.#sourceImpl) {
       throw new Error("Invariant: uninitialized");
     }
@@ -114,11 +117,17 @@ export class McapIterableSource implements IIterableSource {
     return this.#sourceImpl.messageIterator(opt);
   }
 
-  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+  public async getBackfillMessages(
+    args: GetBackfillMessagesArgs,
+  ): Promise<MessageEvent<Uint8Array>[]> {
     if (!this.#sourceImpl) {
       throw new Error("Invariant: uninitialized");
     }
 
     return await this.#sourceImpl.getBackfillMessages(args);
+  }
+
+  public getStart(): Time | undefined {
+    return this.#sourceImpl!.getStart!();
   }
 }

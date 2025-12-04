@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -11,8 +11,11 @@ import { toRFC3339String } from "@lichtblick/rostime";
 import { MessageEvent } from "@lichtblick/suite";
 import { GlobalVariables } from "@lichtblick/suite-base/hooks/useGlobalVariables";
 import { BlockLoader } from "@lichtblick/suite-base/players/IterablePlayer/BlockLoader";
-import { IIterableSource } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
-import PlayerProblemManager from "@lichtblick/suite-base/players/PlayerProblemManager";
+import {
+  IDeserializedIterableSource,
+  IteratorResult,
+} from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
+import PlayerAlertManager from "@lichtblick/suite-base/players/PlayerAlertManager";
 import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
@@ -29,20 +32,26 @@ const log = Log.getLogger(__filename);
 
 const DEFAULT_CACHE_SIZE_BYTES = 1.0e9;
 const MIN_MEM_CACHE_BLOCK_SIZE_NS = 0.1e9;
-const MAX_BLOCKS = 400;
+const MAX_BLOCKS = 100;
 const CAPABILITIES: string[] = [PLAYER_CAPABILITIES.playbackControl];
 
 class BenchmarkPlayer implements Player {
-  #source: IIterableSource;
-  #name: string;
+  readonly #source: IDeserializedIterableSource;
+  readonly #name: string;
   #listener?: (state: PlayerState) => Promise<void>;
   #subscriptions: SubscribePayload[] = [];
   #blockLoader?: BlockLoader;
-  #problemManager = new PlayerProblemManager();
+  readonly #alertManager = new PlayerAlertManager();
 
-  public constructor(name: string, source: IIterableSource) {
+  public constructor(name: string, source: IDeserializedIterableSource) {
     this.#name = name;
     this.#source = source;
+  }
+
+  public getBatchIterator(
+    _topic: string,
+  ): AsyncIterableIterator<Readonly<IteratorResult>> | undefined {
+    return undefined;
   }
 
   public setListener(listener: (state: PlayerState) => Promise<void>): void {
@@ -93,9 +102,9 @@ class BenchmarkPlayer implements Player {
 
     const { start: startTime, end: endTime, topicStats, datatypes, topics } = result;
 
-    // Bail on any problems
-    for (const problem of result.problems) {
-      throw new Error(problem.message);
+    // Bail on any alerts
+    if (result.alerts.length > 0) {
+      throw new Error(result.alerts[0]!.message);
     }
 
     do {
@@ -145,7 +154,7 @@ class BenchmarkPlayer implements Player {
         end: endTime,
         maxBlocks: MAX_BLOCKS,
         minBlockDurationNs: MIN_MEM_CACHE_BLOCK_SIZE_NS,
-        problemManager: this.#problemManager,
+        alertManager: this.#alertManager,
       });
     } catch (e: unknown) {
       const err = e as Error;
@@ -154,7 +163,7 @@ class BenchmarkPlayer implements Player {
       const startStr = toRFC3339String(startTime);
       const endStr = toRFC3339String(endTime);
 
-      this.#problemManager.addProblem("block-loader", {
+      this.#alertManager.addAlert("block-loader", {
         severity: "warn",
         message: "Failed to initialize message preloading",
         tip: `The start (${startStr}) and end (${endStr}) of your data is too far apart.`,
@@ -168,9 +177,9 @@ class BenchmarkPlayer implements Player {
 
     // Load all messages into memory
     for await (const item of iterator) {
-      // any problem bails
-      if (item.type === "problem") {
-        throw new Error(item.problem.message);
+      // bails on any alert
+      if (item.type === "alert") {
+        throw new Error(item.alert.message);
       }
       if (item.type === "message-event") {
         msgEvents.push(item.msgEvent);

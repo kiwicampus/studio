@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -29,7 +29,6 @@ import {
 } from "@fluentui/react-icons";
 import { Tooltip } from "@mui/material";
 import { useCallback, useMemo, useState } from "react";
-import { makeStyles } from "tss-react/mui";
 
 import { Time, compare } from "@lichtblick/rostime";
 import { CreateEventDialog } from "@lichtblick/suite-base/components/CreateEventDialog";
@@ -42,6 +41,9 @@ import {
   MessagePipelineContext,
   useMessagePipeline,
 } from "@lichtblick/suite-base/components/MessagePipeline";
+import SyncInstanceToggle from "@lichtblick/suite-base/components/PlaybackControls/SwitchSyncInstances/SyncInstanceToggle";
+import { useStyles } from "@lichtblick/suite-base/components/PlaybackControls/index.style";
+import { useDirectionalSeek } from "@lichtblick/suite-base/components/PlaybackControls/useDirectionalSeek";
 import PlaybackSpeedControls from "@lichtblick/suite-base/components/PlaybackSpeedControls";
 import Stack from "@lichtblick/suite-base/components/Stack";
 import { useCurrentUser } from "@lichtblick/suite-base/context/BaseUserContext";
@@ -52,55 +54,33 @@ import {
 } from "@lichtblick/suite-base/context/Workspace/WorkspaceContext";
 import { useWorkspaceActions } from "@lichtblick/suite-base/context/Workspace/useWorkspaceActions";
 import { Player, PlayerPresence } from "@lichtblick/suite-base/players/types";
+import BroadcastManager from "@lichtblick/suite-base/util/broadcast/BroadcastManager";
 
 import PlaybackTimeDisplay from "./PlaybackTimeDisplay";
 import { RepeatAdapter } from "./RepeatAdapter";
 import Scrubber from "./Scrubber";
-import { DIRECTION, jumpSeek } from "./sharedHelpers";
-
-const useStyles = makeStyles()((theme) => ({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    padding: theme.spacing(0.5, 1, 1, 1),
-    position: "relative",
-    backgroundColor: theme.palette.background.paper,
-    borderTop: `1px solid ${theme.palette.divider}`,
-    zIndex: 100000,
-    overflowX: "auto",
-  },
-  scrubberWrapper: {
-    position: "sticky",
-    top: 0,
-    right: 0,
-    left: 0,
-  },
-  disabled: {
-    opacity: theme.palette.action.disabledOpacity,
-  },
-  popper: {
-    "&[data-popper-placement*=top] .MuiTooltip-tooltip": {
-      margin: theme.spacing(0.5, 0.5, 0.75),
-    },
-  },
-  dataSourceInfoButton: {
-    cursor: "default",
-  },
-}));
 
 const selectPresence = (ctx: MessagePipelineContext) => ctx.playerState.presence;
 const selectEventsSupported = (store: EventsStore) => store.eventsSupported;
 const selectPlaybackRepeat = (store: WorkspaceContextStore) => store.playbackControls.repeat;
 
-export default function PlaybackControls(props: {
+type PlaybackControlsProps = Readonly<{
   play: NonNullable<Player["startPlayback"]>;
   pause: NonNullable<Player["pausePlayback"]>;
   seek: NonNullable<Player["seekPlayback"]>;
   playUntil?: Player["playUntil"];
   isPlaying: boolean;
   getTimeInfo: () => { startTime?: Time; endTime?: Time; currentTime?: Time };
-}): React.JSX.Element {
-  const { play, pause, seek, isPlaying, getTimeInfo, playUntil } = props;
+}>;
+
+export default function PlaybackControls({
+  play,
+  pause,
+  seek,
+  playUntil,
+  isPlaying,
+  getTimeInfo,
+}: PlaybackControlsProps): React.JSX.Element {
   const presence = useMessagePipeline(selectPresence);
 
   const { classes, cx } = useStyles();
@@ -118,55 +98,34 @@ export default function PlaybackControls(props: {
   }, [setRepeat]);
 
   const togglePlayPause = useCallback(() => {
+    const { startTime: start, endTime: end, currentTime: current } = getTimeInfo();
+
     if (isPlaying) {
       pause();
+
+      BroadcastManager.getInstance().postMessage({
+        type: "pause",
+        time: current!,
+      });
     } else {
-      const { startTime: start, endTime: end, currentTime: current } = getTimeInfo();
       // if we are at the end, we need to go back to start
       if (current && end && start && compare(current, end) >= 0) {
         seek(start);
       }
       play();
+
+      BroadcastManager.getInstance().postMessage({
+        type: "play",
+        time: current!,
+      });
     }
   }, [isPlaying, pause, getTimeInfo, play, seek]);
 
-  const seekForwardAction = useCallback(
-    (ev?: KeyboardEvent) => {
-      const { currentTime } = getTimeInfo();
-      if (!currentTime) {
-        return;
-      }
-
-      // If playUntil is available, we prefer to use that rather than seek, which performs a jump
-      // seek.
-      //
-      // Playing forward up to the desired seek time will play all messages to the panels which
-      // mirrors the behavior panels would expect when playing without stepping. This behavior is
-      // important for some message types which convey state information.
-      //
-      // i.e. Skipping coordinate frame messages may result in incorrectly rendered markers or
-      // missing markers altogther.
-      const targetTime = jumpSeek(DIRECTION.FORWARD, currentTime, ev);
-
-      if (playUntil) {
-        playUntil(targetTime);
-      } else {
-        seek(targetTime);
-      }
-    },
-    [getTimeInfo, playUntil, seek],
-  );
-
-  const seekBackwardAction = useCallback(
-    (ev?: KeyboardEvent) => {
-      const { currentTime } = getTimeInfo();
-      if (!currentTime) {
-        return;
-      }
-      seek(jumpSeek(DIRECTION.BACKWARD, currentTime, ev));
-    },
-    [getTimeInfo, seek],
-  );
+  const { seekForwardAction, seekBackwardAction } = useDirectionalSeek({
+    seek,
+    getTimeInfo,
+    playUntil,
+  });
 
   const keyDownHandlers = useMemo(
     () => ({
@@ -242,6 +201,7 @@ export default function PlaybackControls(props: {
               onClick={() => {
                 seekBackwardAction();
               }}
+              data-testid="seek-backward-button"
             />
             <HoverableIconButton
               disabled={disableControls}
@@ -250,6 +210,7 @@ export default function PlaybackControls(props: {
               onClick={togglePlayPause}
               icon={isPlaying ? <Pause20Regular /> : <Play20Regular />}
               activeIcon={isPlaying ? <Pause20Filled /> : <Play20Filled />}
+              data-testid="play-button"
             />
             <HoverableIconButton
               disabled={disableControls}
@@ -260,9 +221,11 @@ export default function PlaybackControls(props: {
               onClick={() => {
                 seekForwardAction();
               }}
+              data-testid="seek-forward-button"
             />
           </Stack>
           <Stack direction="row" flex={1} alignItems="center" justifyContent="flex-end" gap={0.5}>
+            <SyncInstanceToggle />
             <HoverableIconButton
               size="small"
               title="Loop playback"

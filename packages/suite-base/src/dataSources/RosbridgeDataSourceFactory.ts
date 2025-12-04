@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -18,7 +18,7 @@ class RosbridgeDataSourceFactory implements IDataSourceFactory {
   public displayName = "Rosbridge";
   public iconName: IDataSourceFactory["iconName"] = "Flow";
   public docsLinks = [
-    { url: "https://docs.foxglove.dev/docs/connecting-to-data/frameworks/ros1#rosbridge" },
+    { url: "https://lichtblick-suite.github.io/docs/connecting-to-data/rosbridge.html" },
   ];
   public description = "Connect to a ROS 1 or ROS 2 system using the Rosbridge WebSocket protocol.";
 

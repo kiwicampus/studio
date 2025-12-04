@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -35,7 +35,7 @@ export default function LayoutManagerProvider({
   const { online = false } = useNetworkState();
   const visibilityState = useVisibilityState();
   useEffect(() => {
-    layoutManager.setOnline(online);
+    layoutManager.setOnline({ online });
   }, [layoutManager, online]);
 
   // Sync periodically when logged in, online, and the app is not hidden

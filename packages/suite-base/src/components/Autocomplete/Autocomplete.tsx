@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -205,17 +205,19 @@ export const Autocomplete = React.forwardRef(function Autocomplete(
   return (
     <MuiAutocomplete
       className={className}
-      componentsProps={{
-        paper: { elevation: 8 },
-      }}
       getOptionLabel={getOptionLabel}
       disableCloseOnSelect
       disabled={disabled}
       freeSolo
       fullWidth
-      PopperComponent={CustomPopper}
+      slotProps={{
+        paper: { elevation: 8 },
+        listbox: {
+          component: ReactWindowListboxAdapter,
+        },
+      }}
+      slots={{ popper: CustomPopper }}
       filterOptions={filterOptions}
-      ListboxComponent={ReactWindowListboxAdapter}
       onChange={onSelect}
       onInputChange={onChange}
       openOnFocus

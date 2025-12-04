@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -262,5 +262,20 @@ describe("getDiff", () => {
         id: { [diffLabels.DELETED.labelText]: "B" },
       },
     ]);
+  });
+
+  it("returns {} fallback when before[key] has not key and showFullMessageForDiff is true", () => {
+    const before = {};
+    const after = { someKey: undefined };
+
+    const result = getDiff({
+      before,
+      after,
+      showFullMessageForDiff: true,
+    });
+
+    expect(result).toEqual({
+      someKey: {},
+    });
   });
 });

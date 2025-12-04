@@ -1,18 +1,17 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { AllowedFileExtensions } from "@lichtblick/suite-base/constants/allowedFileExtensions";
 import {
   IDataSourceFactory,
   DataSourceFactoryInitializeArgs,
 } from "@lichtblick/suite-base/context/PlayerSelectionContext";
-import {
-  IterablePlayer,
-  WorkerIterableSource,
-} from "@lichtblick/suite-base/players/IterablePlayer";
+import { IterablePlayer } from "@lichtblick/suite-base/players/IterablePlayer";
+import { WorkerSerializedIterableSource } from "@lichtblick/suite-base/players/IterablePlayer/WorkerSerializedIterableSource";
 import { Player } from "@lichtblick/suite-base/players/types";
 
 class Ros2LocalBagDataSourceFactory implements IDataSourceFactory {
@@ -20,7 +19,7 @@ class Ros2LocalBagDataSourceFactory implements IDataSourceFactory {
   public type: IDataSourceFactory["type"] = "file";
   public displayName = "ROS 2 Bag";
   public iconName: IDataSourceFactory["iconName"] = "OpenFile";
-  public supportedFileTypes = [".db3"];
+  public supportedFileTypes = [AllowedFileExtensions.DB3];
   public supportsMultiFile = true;
 
   public initialize(args: DataSourceFactoryInitializeArgs): Player | undefined {
@@ -31,7 +30,7 @@ class Ros2LocalBagDataSourceFactory implements IDataSourceFactory {
       return;
     }
 
-    const source = new WorkerIterableSource({
+    const source = new WorkerSerializedIterableSource({
       initWorker: () => {
         return new Worker(
           // foxglove-depcheck-used: babel-plugin-transform-import-meta
@@ -49,6 +48,7 @@ class Ros2LocalBagDataSourceFactory implements IDataSourceFactory {
       source,
       name,
       sourceId: this.id,
+      readAheadDuration: { sec: 120, nsec: 0 },
     });
   }
 }

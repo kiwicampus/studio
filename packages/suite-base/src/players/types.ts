@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -20,6 +20,7 @@ import type { MessageEvent, Metadata, ParameterValue } from "@lichtblick/suite";
 import { Immutable } from "@lichtblick/suite";
 import { Asset } from "@lichtblick/suite-base/components/PanelExtensionAdapter";
 import { GlobalVariables } from "@lichtblick/suite-base/hooks/useGlobalVariables";
+import { IteratorResult } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
 import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 import { Range } from "@lichtblick/suite-base/util/ranges";
@@ -76,6 +77,8 @@ export interface Player {
   setPlaybackSpeed?(speedFraction: number): void;
   setGlobalVariables(globalVariables: GlobalVariables): void;
   getMetadata?: () => ReadonlyArray<Readonly<Metadata>>;
+  // Create a batch iterator for streaming messages. Available for data source players that support message iteration.
+  getBatchIterator: (topic: string) => AsyncIterableIterator<Readonly<IteratorResult>> | undefined;
 }
 
 export enum PlayerPresence {
@@ -87,7 +90,7 @@ export enum PlayerPresence {
   ERROR = "ERROR",
 }
 
-export type PlayerProblem = {
+export type PlayerAlert = {
   severity: NotificationSeverity;
   message: string;
   error?: Error;
@@ -96,7 +99,7 @@ export type PlayerProblem = {
 
 export type PlayerURLState = Immutable<{
   sourceId: string;
-  parameters?: Record<string, string>;
+  parameters?: Record<string, string | string[]>;
 }>;
 
 export type PlayerState = {
@@ -127,7 +130,7 @@ export type PlayerState = {
   name?: string;
 
   // Surface issues during playback or player initialization
-  problems?: PlayerProblem[];
+  alerts?: PlayerAlert[];
 
   // The actual data to render panels with. Can be empty during initialization, until all this data
   // is known. See `type PlayerStateActiveData` for more details.

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -31,15 +31,15 @@ const log = Logger.getLogger(__filename);
  * and error handling.
  */
 export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
-  #decoderInit: VideoDecoderInit;
+  readonly #decoderInit: VideoDecoderInit;
   #decoder: VideoDecoder;
   #decoderConfig: VideoDecoderConfig | undefined;
-  #mutex = new Mutex();
+  readonly #mutex = new Mutex();
   #timeoutId: ReturnType<typeof setTimeout> | undefined;
   #pendingFrame: VideoFrame | undefined;
   #codedSize: { width: number; height: number } | undefined;
   // Stores the last decoded frame as an ImageBitmap, should be set after decode()
-  lastImageBitmap: ImageBitmap | undefined;
+  public lastImageBitmap: ImageBitmap | undefined;
 
   /** Reports whether video decoding is supported in this browser session */
   public static IsSupported(): boolean {

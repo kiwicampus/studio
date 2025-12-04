@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -15,13 +15,13 @@ import {
   Subscription,
 } from "@lichtblick/suite";
 import { Topic as PlayerTopic } from "@lichtblick/suite-base/players/types";
-import { ExtensionNamespace } from "@lichtblick/suite-base/types/Extensions";
+import { Namespace } from "@lichtblick/suite-base/types";
 
 // Branded string to ensure that users go through the `converterKey` function to compute a lookup key
 type ConverterKey = Opaque<string, "ConverterKey">;
 
 type MessageConverter = RegisterMessageConverterArgs<unknown> & {
-  extensionNamespace?: ExtensionNamespace;
+  extensionNamespace?: Namespace;
 };
 
 type TopicSchemaConverterMap = Map<ConverterKey, MessageConverter[]>;
