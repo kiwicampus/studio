@@ -82,9 +82,3 @@ export function normalizeCompressedVideo(
 ): CompressedVideo {
   return normalizeCompressedMedia<CompressedVideo>(message);
 }
-
-export function normalizeCompressedVideo(
-  message: PartialMessage<CompressedVideo>,
-): CompressedVideo {
-  return normalizeCompressedImage(message);
-}
