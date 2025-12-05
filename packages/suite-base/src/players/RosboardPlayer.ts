@@ -26,7 +26,7 @@ import { MessageReader as ROS1MessageReader } from "@lichtblick/rosmsg-serializa
 import { MessageReader as ROS2MessageReader } from "@lichtblick/rosmsg2-serialization";
 import { Time, fromMillis, toSec } from "@lichtblick/rostime";
 import { ParameterValue } from "@lichtblick/suite";
-import PlayerProblemManager from "@lichtblick/suite-base/players/PlayerProblemManager";
+import PlayerAlertManager from "@lichtblick/suite-base/players/PlayerAlertManager";
 import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
@@ -133,7 +133,7 @@ export default class RosboardPlayer implements Player {
   #receivedBytes: number = 0;
   #metricsCollector: PlayerMetricsCollectorInterface;
   #presence: PlayerPresence = PlayerPresence.NOT_PRESENT;
-  #problems = new PlayerProblemManager();
+  #alerts = new PlayerAlertManager();
   #emitTimer?: ReturnType<typeof setTimeout>;
   #serviceTypeCache = new Map<string, Promise<string>>();
   readonly #sourceId: string;
@@ -164,7 +164,7 @@ export default class RosboardPlayer implements Player {
     if (this.#rosClient != undefined) {
       throw new Error(`Attempted to open a second Rosboard connection`);
     }
-    this.#problems.removeProblem("rosboard:connection-failed");
+    this.#alerts.removeAlert("rosboard:connection-failed");
     log.info(`Opening connection to ${this.#url}`);
 
     /* Old rosClient definition using roslibjs */
@@ -178,7 +178,7 @@ export default class RosboardPlayer implements Player {
         return;
       }
       this.#presence = PlayerPresence.PRESENT;
-      this.#problems.removeProblem("rosboard:connection-failed");
+      this.#alerts.removeAlert("rosboard:connection-failed");
       this.#rosClient = rosClient;
 
       this.#setupPublishers();
@@ -187,7 +187,7 @@ export default class RosboardPlayer implements Player {
 
     rosClient.on("error", (err) => {
       if (err) {
-        this.#problems.addProblem("rosboard:error", {
+        this.#alerts.addAlert("rosboard:error", {
           severity: "warn",
           message: "Rosboard error",
           error: err,
@@ -212,7 +212,7 @@ export default class RosboardPlayer implements Player {
       rosClient.close(); // ensure the underlying worker is cleaned up
       this.#rosClient = undefined;
 
-      this.#problems.addProblem("rosboard:connection-failed", {
+      this.#alerts.addAlert("rosboard:connection-failed", {
         severity: "error",
         message: "Connection failed",
         tip: `Check that the rosboard WebSocket server at ${this.#url} is reachable.`,
@@ -235,8 +235,8 @@ export default class RosboardPlayer implements Player {
 
   async #requestTopics(opt?: { forceUpdate: boolean }): Promise<void> {
     const { forceUpdate = false } = opt ?? {};
-    // clear problems before each topics request so we don't have stale problems from previous failed requests
-    this.#problems.removeProblems((id) => id.startsWith("requestTopics:"));
+    // clear alerts before each topics request so we don't have stale alerts from previous failed requests
+    this.#alerts.removeAlerts((id: string) => id.startsWith("requestTopics:"));
 
     if (this.#requestTopicsTimeout) {
       clearTimeout(this.#requestTopicsTimeout);
@@ -251,7 +251,7 @@ export default class RosboardPlayer implements Player {
     // This logic adds a warning after 5 seconds (picked arbitrarily) to display a notice to the user.
 
     const topicsStallWarningTimeout = setTimeout(() => {
-      this.#problems.addProblem("topicsAndRawTypesTimeout", {
+      this.#alerts.addAlert("topicsAndRawTypesTimeout", {
         severity: "warn",
         message: "Taking too long to get topics and raw types.",
       });
@@ -269,7 +269,7 @@ export default class RosboardPlayer implements Player {
 
       clearTimeout(topicsStallWarningTimeout);
 
-      this.#problems.removeProblem("topicsAndRawTypesTimeout");
+      this.#alerts.removeAlert("topicsAndRawTypesTimeout");
 
       const topicsMissingDatatypes: string[] = [];
       const topics: TopicWithSchemaName[] = [];
@@ -313,7 +313,7 @@ export default class RosboardPlayer implements Player {
       }
 
       if (topicsMissingDatatypes.length > 0) {
-        this.#problems.addProblem("requestTopics:missing-types", {
+        this.#alerts.addAlert("requestTopics:missing-types", {
           severity: "warn",
           message: "Could not resolve all message types",
           tip: `Message types could not be found for these topics: ${topicsMissingDatatypes.join(
@@ -342,9 +342,9 @@ export default class RosboardPlayer implements Player {
     } catch (error) {
       log.error(error);
       clearTimeout(topicsStallWarningTimeout);
-      this.#problems.removeProblem("topicsAndRawTypesTimeout");
+      this.#alerts.removeAlert("topicsAndRawTypesTimeout");
 
-      this.#problems.addProblem("requestTopics:error", {
+      this.#alerts.addAlert("requestTopics:error", {
         severity: "error",
         message: "Failed to fetch topics from rosboard",
         error,
@@ -376,7 +376,7 @@ export default class RosboardPlayer implements Player {
         profile: undefined,
         playerId: this.#id,
         activeData: undefined,
-        problems: this.#problems.problems(),
+        alerts: this.#alerts.alerts(),
         urlState: {
           sourceId: this.#sourceId,
           parameters: { url: this.#url },
@@ -403,7 +403,7 @@ export default class RosboardPlayer implements Player {
       capabilities: CAPABILITIES,
       profile: this.#rosVersion === 2 ? "ros2" : "ros1",
       playerId: this.#id,
-      problems: this.#problems.problems(),
+      alerts: this.#alerts.alerts(),
       urlState: {
         sourceId: this.#sourceId,
         parameters: { url: this.#url },
@@ -686,7 +686,7 @@ export default class RosboardPlayer implements Player {
             };
             this.#parsedMessages.push(msg);
           }
-          this.#problems.removeProblem(problemId);
+          this.#alerts.removeAlert(problemId);
 
           // Update the message count for this topic
           let stats = this.#providerTopicsStats.get(topicName);
@@ -698,7 +698,7 @@ export default class RosboardPlayer implements Player {
             stats.numMessages++;
           }
         } catch (error) {
-          this.#problems.addProblem(problemId, {
+          this.#alerts.addAlert(problemId, {
             severity: "error",
             message: `Failed to parse message on ${topicName}`,
             error,
@@ -848,6 +848,11 @@ export default class RosboardPlayer implements Player {
   }
   public setGlobalVariables(): void {
     // no-op
+  }
+
+  public getBatchIterator(): undefined {
+    // RosboardPlayer does not support batch iteration
+    return undefined;
   }
 
   #setupPublishers(): void {
