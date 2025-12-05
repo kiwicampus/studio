@@ -208,7 +208,7 @@ export const findReturnType = (
   const returnTypeSymbol = fullReturnType.getSymbol();
   if (returnTypeSymbol && returnTypeSymbol.getName() === "Promise") {
     const typeArguments = typeChecker.getTypeArguments(fullReturnType as ts.GenericType);
-    if (typeArguments && typeArguments.length > 0) {
+    if (typeArguments.length > 0) {
       fullReturnType = typeArguments[0]!;
     }
   }

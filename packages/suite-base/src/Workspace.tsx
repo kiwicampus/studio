@@ -511,40 +511,43 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
 
   const selectEvent = useEvents(selectSelectEvent);
 
-  const fetchLayoutFromUrl = async (layoutUrl: string) => {
-    if (!layoutUrl) {
-      return;
-    }
-    let res;
-    try {
-      res = await fetch(layoutUrl);
-      if (!res.ok) {
+  const fetchLayoutFromUrl = useCallback(
+    async (layoutUrl: string) => {
+      if (!layoutUrl) {
+        return;
+      }
+      let res;
+      try {
+        res = await fetch(layoutUrl);
+        if (!res.ok) {
+          log.debug(`Could not load the layout from ${layoutUrl}`);
+          return;
+        }
+      } catch {
         log.debug(`Could not load the layout from ${layoutUrl}`);
         return;
       }
-    } catch {
-      log.debug(`Could not load the layout from ${layoutUrl}`);
-      return;
-    }
-    let parsedState: unknown;
-    try {
-      parsedState = JSON.parse(await res.text());
-    } catch {
-      log.debug(`Could not parse layout JSON from ${layoutUrl}`);
-      return;
-    }
+      let parsedState: unknown;
+      try {
+        parsedState = JSON.parse(await res.text());
+      } catch {
+        log.debug(`Could not parse layout JSON from ${layoutUrl}`);
+        return;
+      }
 
-    if (typeof parsedState !== "object" || !parsedState) {
-      log.debug(`${layoutUrl} does not contain valid layout JSON`);
-      return;
-    }
+      if (typeof parsedState !== "object" || !parsedState) {
+        log.debug(`${layoutUrl} does not contain valid layout JSON`);
+        return;
+      }
 
-    const layoutData = parsedState as LayoutData;
-    setCurrentLayout({
-      name: "test-layout",
-      data: layoutData,
-    });
-  };
+      const layoutData = parsedState as LayoutData;
+      setCurrentLayout({
+        name: "test-layout",
+        data: layoutData,
+      });
+    },
+    [setCurrentLayout],
+  );
 
   // Load data source from URL.
   useEffect(() => {
@@ -552,7 +555,7 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
       return;
     }
 
-    let shouldUpdate;
+    let shouldUpdate: boolean | undefined;
 
     // Apply any available data source args
     if (unappliedSourceArgs.ds) {
@@ -569,7 +572,7 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
       void fetchLayoutFromUrl(unappliedSourceArgs.layoutUrl);
       shouldUpdate = true;
     }
-    if (shouldUpdate) {
+    if (shouldUpdate === true) {
       setUnappliedSourceArgs({ ds: undefined, dsParams: undefined, layoutUrl: undefined });
     }
   }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs, fetchLayoutFromUrl]);
