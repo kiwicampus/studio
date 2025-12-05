@@ -201,7 +201,10 @@ class RosboardClient {
           const typedefs: TypeIndex = {};
           const fPayload = payload as Record<string, { type: string; typedef: string }>;
           Object.keys(fPayload).forEach((k) => {
-            typedefs[fPayload[k]?.type] = fPayload[k]?.typedef;
+            const item = fPayload[k];
+            if (item?.type != undefined) {
+              typedefs[item.type] = item.typedef;
+            }
           });
           this._topicsFull = typedefs;
           this._topicsFullRequested = false;
