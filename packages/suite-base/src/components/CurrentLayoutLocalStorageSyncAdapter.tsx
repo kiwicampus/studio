@@ -20,7 +20,6 @@ import {
   useCurrentLayoutSelector,
 } from "@lichtblick/suite-base/context/CurrentLayoutContext";
 import { useLayoutManager } from "@lichtblick/suite-base/context/LayoutManagerContext";
-import { usePlayerSelection } from "@lichtblick/suite-base/context/PlayerSelectionContext";
 import { defaultLayout } from "@lichtblick/suite-base/providers/CurrentLayoutProvider/defaultLayout";
 import { migratePanelsState } from "@lichtblick/suite-base/services/migrateLayout";
 import { windowAppURLState } from "@lichtblick/suite-base/util/appURLState";
@@ -36,7 +35,7 @@ export function selectLayoutId(state: LayoutState): LayoutID | undefined {
 const log = Log.getLogger(__filename);
 
 export function CurrentLayoutLocalStorageSyncAdapter(): React.JSX.Element {
-  const { getCurrentLayoutState } = useCurrentLayoutActions();
+  const { getCurrentLayoutState, setCurrentLayout } = useCurrentLayoutActions();
   const currentLayoutData = useCurrentLayoutSelector(selectLayoutData);
   const currentLayoutId = useCurrentLayoutSelector(selectLayoutId);
 

@@ -7,7 +7,6 @@
 
 import { Draft, produce } from "immer";
 import * as _ from "lodash-es";
-import { basename, extname } from "path";
 import { Dispatch, SetStateAction, useCallback, useMemo } from "react";
 
 import { useGuaranteedContext } from "@lichtblick/hooks";
