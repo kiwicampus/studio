@@ -60,11 +60,9 @@ import { AllowedFileExtensions } from "@lichtblick/suite-base/constants/allowedF
 import { useAppContext } from "@lichtblick/suite-base/context/AppContext";
 import {
   LayoutData,
-  useCurrentLayoutActions,
-} from "@lichtblick/suite-base/context/CurrentLayoutContext";
-import {
   LayoutState,
   useCurrentLayoutSelector,
+  useCurrentLayoutActions,
 } from "@lichtblick/suite-base/context/CurrentLayoutContext";
 import {
   useCurrentUser,
@@ -574,7 +572,7 @@ function WorkspaceContent(props: WorkspaceProps): React.JSX.Element {
     if (shouldUpdate) {
       setUnappliedSourceArgs({ ds: undefined, dsParams: undefined, layoutUrl: undefined });
     }
-  }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs]);
+  }, [selectEvent, selectSource, unappliedSourceArgs, setUnappliedSourceArgs, fetchLayoutFromUrl]);
 
   const [unappliedTime, setUnappliedTime] = useState(
     targetUrlState ? { time: targetUrlState.time } : undefined,
