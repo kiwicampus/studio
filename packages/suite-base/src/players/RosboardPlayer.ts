@@ -611,11 +611,13 @@ export default class RosboardPlayer implements Player {
   // convertions in an sligtly different manner as in the former example:
   // (this time inf/NaN values are not mapped)
   public decodePointCloud2Msg(message: RosboardPointCloud2Message): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = this._base64decode(String(message._data_uint16.points));
     const rview = new DataView(rdata);
 
     const num_ranges = rdata.byteLength / 6;
 
+    // eslint-disable-next-line no-underscore-dangle
     const bounds: number[] = message._data_uint16.bounds;
 
     const xmin: number = bounds[0] ?? 0;
@@ -848,7 +850,8 @@ export default class RosboardPlayer implements Player {
 
   public async callService(_service: string, _request: unknown): Promise<unknown> {
     // Service calls are not yet supported by the Rosboard connection
-    /* TODO
+    throw new Error("Service calls are not supported by the Rosboard connection");
+    /*
     if (!this.#rosClient) {
       throw new Error("Not connected");
     }
@@ -998,8 +1001,8 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
         return;
       }
 
-      const width = img.width ?? 0;
-      const height = img.height ?? 0;
+      const width = img.width || 0;
+      const height = img.height || 0;
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(img, 0, 0);
@@ -1046,8 +1049,8 @@ async function decodeBase64Png(base64String: string): Promise<Uint8Array> {
         reject(new Error("Could not get 2D context"));
         return;
       }
-      const width = img.width || 0;
-      const height = img.height || 0;
+      const width = img.width > 0 ? img.width : 0;
+      const height = img.height > 0 ? img.height : 0;
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(img, 0, 0);

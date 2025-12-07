@@ -1,3 +1,4 @@
+/* eslint-disable filenames/match-exported */
 // SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
@@ -84,12 +85,11 @@ export class PubTopic {
     const renamedMsg = renameNsecToNanosec(msg) as MessagePayload;
     // rosboard expects a message like this: ["m", {message dictionary}]
     // and message dictionary is in the form of {_topic_name: topic, _topic_type: type, ...payload}
-    // eslint-disable-next-line no-underscore-dangle
     const payload: Record<string, unknown> = {
-      // eslint-disable-next-line no-underscore-dangle
+      /* eslint-disable @typescript-eslint/naming-convention */
       _topic_name: this.name,
-      // eslint-disable-next-line no-underscore-dangle
       _topic_type: this.messageType,
+      /* eslint-enable @typescript-eslint/naming-convention */
       ...renamedMsg,
     };
 
@@ -168,7 +168,7 @@ class RosboardClient {
             const reader = new FileReader();
 
             reader.onload = () => {
-              if (reader.result) {
+              if (reader.result != undefined && reader.result !== null) {
                 resolve(reader.result as string);
               } else {
                 reject(new Error("Reader result is empty"));
@@ -195,9 +195,17 @@ class RosboardClient {
           const hostnameValue = yPayload.hostname;
           const versionValue = yPayload.version;
           this.hostname =
-            typeof hostnameValue === "string" ? hostnameValue : String(hostnameValue ?? "");
+            typeof hostnameValue === "string"
+              ? hostnameValue
+              : hostnameValue != undefined
+                ? String(hostnameValue)
+                : "";
           this.version =
-            typeof versionValue === "string" ? versionValue : String(versionValue ?? "");
+            typeof versionValue === "string"
+              ? versionValue
+              : versionValue != undefined
+                ? String(versionValue)
+                : "";
           if ("auto_reconnect" in yPayload) {
             this.auto_reconnect = Boolean(yPayload.auto_reconnect);
           }
@@ -221,16 +229,14 @@ class RosboardClient {
           type === "m" &&
           typeof payload === "object" &&
           payload != undefined &&
-          // eslint-disable-next-line no-underscore-dangle
+          /* eslint-disable @typescript-eslint/naming-convention */
           "_topic_name" in payload &&
-          // eslint-disable-next-line no-underscore-dangle
           typeof (payload as { _topic_name: unknown })._topic_name === "string" &&
-          // eslint-disable-next-line no-underscore-dangle
           this.subscribedTopics.includes(String((payload as { _topic_name: string })._topic_name))
         ) {
           // Message received for a subscribed topic
-          // eslint-disable-next-line no-underscore-dangle
           const topicName = String((payload as { _topic_name: string })._topic_name);
+          /* eslint-enable @typescript-eslint/naming-convention */
           if (this.topicCallbacks[topicName]) {
             // Execute the callback function for the topic
             const callback = this.topicCallbacks[topicName];
