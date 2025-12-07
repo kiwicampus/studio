@@ -86,11 +86,8 @@ export class PubTopic {
     const renamedMsg = renameNsecToNanosec(msg) as MessagePayload;
     // rosboard expects a message like this: ["m", {message dictionary}]
     // and message dictionary is in the form of {_topic_name: topic, _topic_type: type, ...payload}
-    // eslint-disable-next-line @typescript-eslint/naming-convention
     const payload: Record<string, unknown> = {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       _topic_name: this.name,
-      // eslint-disable-next-line @typescript-eslint/naming-convention
       _topic_type: this.messageType,
       ...renamedMsg,
     };
@@ -170,7 +167,7 @@ class RosboardClient {
             const reader = new FileReader();
 
             reader.onload = () => {
-              if (reader.result != null) {
+              if (reader.result != undefined) {
                 resolve(reader.result as string);
               } else {
                 reject(new Error("Reader result is empty"));
@@ -231,7 +228,6 @@ class RosboardClient {
           type === "m" &&
           typeof payload === "object" &&
           payload != undefined &&
-          // eslint-disable-next-line no-underscore-dangle
           "_topic_name" in payload &&
           // eslint-disable-next-line no-underscore-dangle
           typeof (payload as { _topic_name: unknown })._topic_name === "string" &&
