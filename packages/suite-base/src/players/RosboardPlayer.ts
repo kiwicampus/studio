@@ -44,7 +44,7 @@ import {
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 import { bagConnectionsToDatatypes } from "@lichtblick/suite-base/util/bagConnectionsHelper";
 
-import RosboardClient, { PubTopic } from "./rosboardClient";
+import RosboardClient, { PubTopic } from "./RosboardClient";
 
 const log = Log.getLogger(__dirname);
 

@@ -50,6 +50,7 @@ describe("CurrentLayoutLocalStorageSyncAdapter", () => {
     jest.clearAllMocks();
     (useCurrentLayoutActions as jest.Mock).mockReturnValue({
       getCurrentLayoutState: mockGetCurrentLayoutState,
+      setCurrentLayout: jest.fn(),
     });
     (useCurrentLayoutSelector as jest.Mock).mockImplementation((selector) => {
       if (selector === selectLayoutData) {

@@ -5,8 +5,6 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-/* eslint-disable filenames/match-exported */
-
 interface Topic {
   [name: string]: string;
 }
@@ -26,6 +24,11 @@ interface UnsubscribePayload {
 
 interface MessagePayload {
   [key: string]: unknown;
+}
+
+interface VersionPayload {
+  hostname?: string;
+  version?: string | number;
 }
 
 type MessageCallback = (message: MessagePayload) => void;
@@ -190,21 +193,11 @@ class RosboardClient {
         const [type, payload] = data;
 
         if (type === "y" && typeof payload === "object" && payload != undefined) {
-          const yPayload = payload as Record<string, unknown>;
+          const yPayload = payload as VersionPayload;
           const hostnameValue = yPayload.hostname;
           const versionValue = yPayload.version;
-          this.hostname =
-            typeof hostnameValue === "string"
-              ? hostnameValue
-              : hostnameValue != undefined
-                ? String(hostnameValue)
-                : "";
-          this.version =
-            typeof versionValue === "string"
-              ? versionValue
-              : versionValue != undefined
-                ? String(versionValue)
-                : "";
+          this.hostname = hostnameValue != undefined ? String(hostnameValue) : "";
+          this.version = versionValue != undefined ? String(versionValue) : "";
           if ("auto_reconnect" in yPayload) {
             this.auto_reconnect = Boolean(yPayload.auto_reconnect);
           }
