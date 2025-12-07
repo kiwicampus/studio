@@ -1,10 +1,11 @@
-/* eslint-disable filenames/match-exported */
 // SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
+
+/* eslint-disable filenames/match-exported */
 
 interface Topic {
   [name: string]: string;
@@ -85,11 +86,12 @@ export class PubTopic {
     const renamedMsg = renameNsecToNanosec(msg) as MessagePayload;
     // rosboard expects a message like this: ["m", {message dictionary}]
     // and message dictionary is in the form of {_topic_name: topic, _topic_type: type, ...payload}
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     const payload: Record<string, unknown> = {
-      /* eslint-disable @typescript-eslint/naming-convention */
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       _topic_name: this.name,
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       _topic_type: this.messageType,
-      /* eslint-enable @typescript-eslint/naming-convention */
       ...renamedMsg,
     };
 
@@ -168,7 +170,7 @@ class RosboardClient {
             const reader = new FileReader();
 
             reader.onload = () => {
-              if (reader.result != undefined && reader.result !== null) {
+              if (reader.result != null) {
                 resolve(reader.result as string);
               } else {
                 reject(new Error("Reader result is empty"));
@@ -229,14 +231,16 @@ class RosboardClient {
           type === "m" &&
           typeof payload === "object" &&
           payload != undefined &&
-          /* eslint-disable @typescript-eslint/naming-convention */
+          // eslint-disable-next-line no-underscore-dangle
           "_topic_name" in payload &&
+          // eslint-disable-next-line no-underscore-dangle
           typeof (payload as { _topic_name: unknown })._topic_name === "string" &&
+          // eslint-disable-next-line no-underscore-dangle
           this.subscribedTopics.includes(String((payload as { _topic_name: string })._topic_name))
         ) {
           // Message received for a subscribed topic
+          // eslint-disable-next-line no-underscore-dangle
           const topicName = String((payload as { _topic_name: string })._topic_name);
-          /* eslint-enable @typescript-eslint/naming-convention */
           if (this.topicCallbacks[topicName]) {
             // Execute the callback function for the topic
             const callback = this.topicCallbacks[topicName];

@@ -1001,8 +1001,8 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
         return;
       }
 
-      const width = img.width || 0;
-      const height = img.height || 0;
+      const width = img.width > 0 && !isNaN(img.width) ? img.width : 0;
+      const height = img.height > 0 && !isNaN(img.height) ? img.height : 0;
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(img, 0, 0);
