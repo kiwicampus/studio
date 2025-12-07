@@ -33,7 +33,7 @@ type EventCallback = () => void;
 function renameNsecToNanosec(obj: unknown): unknown {
   if (Array.isArray(obj)) {
     return obj.map((item) => renameNsecToNanosec(item));
-  } else if (obj != null && typeof obj === "object") {
+  } else if (obj != undefined && typeof obj === "object") {
     const newObj: Record<string, unknown> = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -84,8 +84,11 @@ export class PubTopic {
     const renamedMsg = renameNsecToNanosec(msg) as MessagePayload;
     // rosboard expects a message like this: ["m", {message dictionary}]
     // and message dictionary is in the form of {_topic_name: topic, _topic_type: type, ...payload}
-    const payload = {
+    // eslint-disable-next-line no-underscore-dangle
+    const payload: Record<string, unknown> = {
+      // eslint-disable-next-line no-underscore-dangle
       _topic_name: this.name,
+      // eslint-disable-next-line no-underscore-dangle
       _topic_type: this.messageType,
       ...renamedMsg,
     };
@@ -122,7 +125,7 @@ class RosboardClient {
     this.openConnection();
   }
 
-  openConnection = (): void => {
+  public openConnection = (): void => {
     if (this.ws != undefined) {
       throw new Error(`Attempted to open a second WebSocket Connection`);
     }
@@ -139,7 +142,9 @@ class RosboardClient {
     ws.addEventListener("error", (event) => {
       console.error("WebSocket error:", event);
       const error =
-        event instanceof ErrorEvent && event.error ? event.error : new Error("WebSocket error");
+        event instanceof ErrorEvent && event.error instanceof Error
+          ? event.error
+          : new Error("WebSocket error");
       if (this.errorCallback) {
         this.errorCallback(error);
       }
@@ -171,7 +176,7 @@ class RosboardClient {
             };
 
             reader.onerror = () => {
-              reject(reader.error ? reader.error : new Error("FileReader error"));
+              reject(reader.error ?? new Error("FileReader error"));
             };
 
             reader.readAsText(event.data as Blob);
@@ -185,18 +190,22 @@ class RosboardClient {
         }
         const [type, payload] = data;
 
-        if (type === "y" && typeof payload === "object" && payload != null) {
+        if (type === "y" && typeof payload === "object" && payload != undefined) {
           const yPayload = payload as Record<string, unknown>;
-          this.hostname = String(yPayload.hostname ?? "");
-          this.version = String(yPayload.version ?? "");
+          const hostnameValue = yPayload.hostname;
+          const versionValue = yPayload.version;
+          this.hostname =
+            typeof hostnameValue === "string" ? hostnameValue : String(hostnameValue ?? "");
+          this.version =
+            typeof versionValue === "string" ? versionValue : String(versionValue ?? "");
           if ("auto_reconnect" in yPayload) {
             this.auto_reconnect = Boolean(yPayload.auto_reconnect);
           }
-        } else if (type === "t" && typeof payload === "object" && payload != null) {
+        } else if (type === "t" && typeof payload === "object" && payload != undefined) {
           // Update availableTopics directly with the new payload
           this._availableTopics = payload as Topic;
           //console.log('Updated Available Topics:', this._availableTopics);
-        } else if (type === "f" && typeof payload === "object" && payload != null) {
+        } else if (type === "f" && typeof payload === "object" && payload != undefined) {
           // Update availableTopics directly with the new payload
           const typedefs: TypeIndex = {};
           const fPayload = payload as Record<string, { type: string; typedef: string }>;
@@ -211,12 +220,16 @@ class RosboardClient {
         } else if (
           type === "m" &&
           typeof payload === "object" &&
-          payload != null &&
+          payload != undefined &&
+          // eslint-disable-next-line no-underscore-dangle
           "_topic_name" in payload &&
+          // eslint-disable-next-line no-underscore-dangle
           typeof (payload as { _topic_name: unknown })._topic_name === "string" &&
+          // eslint-disable-next-line no-underscore-dangle
           this.subscribedTopics.includes(String((payload as { _topic_name: string })._topic_name))
         ) {
           // Message received for a subscribed topic
+          // eslint-disable-next-line no-underscore-dangle
           const topicName = String((payload as { _topic_name: string })._topic_name);
           if (this.topicCallbacks[topicName]) {
             // Execute the callback function for the topic
@@ -228,7 +241,7 @@ class RosboardClient {
         } else if (
           type === "p" &&
           typeof payload === "object" &&
-          payload != null &&
+          payload != undefined &&
           typeof (payload as { s?: unknown }).s === "number"
         ) {
           // Respond with a message of type 'q' containing the current timestamp and matching sequence number
@@ -254,7 +267,8 @@ class RosboardClient {
       this.connectionCallbacks.push(callback as EventCallback);
     } else if (event === "error") {
       this.errorCallback = callback as (error: Error) => void;
-    } else if (event === "close") {
+    } else {
+      // event === "close"
       this.closeCallback = callback as () => void;
     }
   }
@@ -340,4 +354,5 @@ class RosboardClient {
   }
 }
 
+export { RosboardClient };
 export default RosboardClient;

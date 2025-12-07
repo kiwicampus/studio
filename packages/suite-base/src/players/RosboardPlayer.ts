@@ -88,7 +88,7 @@ interface RosboardLaserScanMessage {
 
 interface RosboardImageMessage {
   _data_jpeg: string;
-  _topic_name: string;
+  _topic_name?: string;
   encoding?: string;
   data?: Uint8Array;
   [key: string]: unknown;
@@ -96,7 +96,7 @@ interface RosboardImageMessage {
 
 interface RosboardOccupancyGridMessage {
   _data_jpeg: string;
-  _topic_name: string;
+  _topic_name?: string;
   data?: Int8Array;
   [key: string]: unknown;
 }
@@ -323,7 +323,7 @@ export default class RosboardPlayer implements Player {
       for (const [topicName, type] of Object.entries(result)) {
         const messageDefinition = this.#typeIndex[type];
 
-        if (type == undefined || messageDefinition == undefined) {
+        if (type === "" || messageDefinition == undefined) {
           topics.push({ name: topicName + " (UNDEFINED DATATYPE)", schemaName: type });
           topicsMissingDatatypes.push(topicName);
           continue;
@@ -508,8 +508,10 @@ export default class RosboardPlayer implements Player {
   // In rosboard, laser scan messages come scaled into uint16 values
   // and use _ranges_uint16.bounds to scale them back to Float32 renderable format
   public decodeLaserScanMsg(message: RosboardLaserScanMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rbounds = message._ranges_uint16.bounds;
 
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = this._base64decode(String(message._ranges_uint16.points));
 
     const rview = new DataView(rdata);
@@ -539,7 +541,9 @@ export default class RosboardPlayer implements Player {
   // Images come in regular base64-encoded jpeg data which
   // is decoded into it's raw format for visualization
   public decodeImageMsg(message: RosboardImageMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = message._data_jpeg;
+    // eslint-disable-next-line no-underscore-dangle
     const topicName = message._topic_name;
 
     if (topicName != undefined && this.#cachedImages[topicName] != undefined) {
@@ -566,7 +570,9 @@ export default class RosboardPlayer implements Player {
   // In contrast with decodeImageMsg, the raw rgb data must be merged
   // into a single channel gray-scaled data
   public decodeOccupancyGridMsg(message: RosboardOccupancyGridMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = message._data_jpeg;
+    // eslint-disable-next-line no-underscore-dangle
     const topicName = message._topic_name;
 
     if (topicName != undefined && this.#cachedGrids[topicName] != undefined) {
@@ -693,6 +699,7 @@ export default class RosboardPlayer implements Player {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
           // const innerMessage = messageReader.readMessage(bytes);
+          // eslint-disable-next-line no-underscore-dangle
           const topicType = message._topic_type;
           if (topicType === "sensor_msgs/msg/LaserScan") {
             this.decodeLaserScanMsg(message as RosboardLaserScanMessage);
@@ -816,8 +823,7 @@ export default class RosboardPlayer implements Player {
   }
 
   // Query the type name for this service. Cache the query to avoid looking it up again.
-  async #getServiceType(service: string): Promise<string> {
-    service;
+  async #getServiceType(_service: string): Promise<string> {
     /* (Roslibjs specific)
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -840,9 +846,8 @@ export default class RosboardPlayer implements Player {
     return "";
   }
 
-  public async callService(service: string, request: unknown): Promise<unknown> {
-    request;
-    service;
+  public async callService(_service: string, _request: unknown): Promise<unknown> {
+    // Service calls are not yet supported by the Rosboard connection
     /* TODO
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -1041,8 +1046,8 @@ async function decodeBase64Png(base64String: string): Promise<Uint8Array> {
         reject(new Error("Could not get 2D context"));
         return;
       }
-      const width = img.width ?? 0;
-      const height = img.height ?? 0;
+      const width = img.width || 0;
+      const height = img.height || 0;
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(img, 0, 0);
