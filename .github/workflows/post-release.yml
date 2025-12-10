@@ -8,16 +8,15 @@ on:
 jobs:
   npm:
     name: Publish to NPM
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout ${{ github.event.release.tag_name }}
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
-          lfs: true
 
-      - uses: actions/setup-node@v4.0.3
+      - uses: actions/setup-node@v6
         with:
           node-version: 16.17
           registry-url: https://registry.npmjs.org
@@ -32,7 +31,7 @@ jobs:
 
   docker:
     name: Publish to GHCR
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
@@ -40,10 +39,9 @@ jobs:
 
     steps:
       - name: Checkout ${{ github.event.release.tag_name }}
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.release.tag_name }}
-          lfs: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

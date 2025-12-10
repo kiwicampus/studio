@@ -18,14 +18,37 @@ Lichtblick is an integrated visualization and diagnosis tool for robotics, avail
   </p>
 </div>
 
+## :rocket: Try Lichtblick
+
+**[Try Lichtblick now in your browser!](https://lichtblick-suite.github.io/lichtblick/)**
+
+No installation required - experience the full power of Lichtblick directly in your web browser!
+
+## :book: Documentation
+
+Looking for guidance on using Lichtblick? Check out our [official documentation here!](https://lichtblick-suite.github.io/docs/)
+
+We are actively updating our documentation with new features, stay tunned! :rocket:
+
 **Dependencies:**
 
 - [Node.js](https://nodejs.org/en/) v16.10+
-- [Git LFS](https://git-lfs.github.com/)
 
 <hr/>
 
 ## :rocket: Getting started
+
+### :whale: From Docker
+
+To run lichtblick via docker you can run:
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/lichtblick-suite/lichtblick:latest
+```
+
+And open in your browser: http://localhost:8080/
+
+### 📑 From source code
 
 Clone the repository:
 
@@ -41,8 +64,77 @@ After that just build the container with:
 
 ```sh
 docker build -t local-foxglove .
-
 ```
+
+### Without docker
+
+```sh
+$ git lfs pull
+```
+
+Enable corepack:
+
+```sh
+$ corepack enable
+```
+
+Install packages from `package.json`:
+
+```sh
+$ yarn install
+```
+
+```sh
+# To build the desktop apps:
+$ yarn run desktop:build:prod   # compile necessary files
+
+- yarn run package:win         # Package for windows
+- yarn run package:darwin      # Package for macOS
+- yarn run package:linux       # Package for linux
+
+# To build the web app:
+$ yarn run web:build:prod
+
+# To build and run the web app using docker:
+$ docker build . -t lichtblick
+$ docker run -p 8080:8080 lichtblick
+
+# It is possible to clean up build files using the following command:
+$ yarn run clean
+```
+
+- The desktop builds are located in the `dist` directory, and the web builds are found in the `web/.webpack` directory.
+
+## :warning: Note on Linux dependencies (.tar.gz only)
+
+When installing the **`.tar.gz` package**, unlike the `.deb`, **system dependencies are not installed automatically**.
+In many cases, if you already have **Google Chrome** or another Chromium-based application installed, Lichtblick will run fine since these applications bring most of the required libraries.
+
+However, if you see errors about missing libraries when launching Lichtblick, you will need to install them manually.
+The most common missing dependencies are:
+
+- `libgtk-3-0`
+- `libatk1.0-0`
+- `libatk-bridge2.0-0`
+- `libatspi2.0-0`
+- `libnss3`
+- `libnspr4`
+- `libasound2`
+- `libcups2`
+- `libnotify4`
+- `libxtst6`
+- `xdg-utils`
+- `libdrm2`
+- `libgbm1`
+- `libxcb-dri3-0`
+
+Example (Debian/Ubuntu):
+
+```bash
+sudo apt-get update && sudo apt-get install libgtk-3-0 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libnss3 libnspr4 libasound2 libcups2 libnotify4 libxtst6 xdg-utils libdrm2 libgbm1 libxcb-dri3-0
+```
+
+👉 **Recommendation**: if using the `.tar.gz`, always check the error messages in the terminal. They will indicate which library is missing so you can install it manually.
 
 ### Running the container
 
@@ -50,7 +142,7 @@ docker build -t local-foxglove .
 docker run --rm -p "8080:8080" local-foxglove
 ```
 
-Foxglove Studio will be accessible in your browser at [localhost:8080](http://localhost:8080/).
+Lichtblick Suite will be accessible in your browser at [localhost:8080](http://localhost:8080/).
 
 ### Developing with the container
 
@@ -73,24 +165,6 @@ It will server the web app and recompile interactively when you make changes. Yo
 
 [Bind-mount](https://docs.docker.com/storage/bind-mounts/) a layout JSON file at `/foxglove/default-layout.json` to set the default layout used when loading Studio from the Docker image.
 
-```sh
-$ git lfs pull
-```
-
-Enable corepack:
-
-```sh
-$ corepack enable
-```
-
-Install packages from `package.json`:
-
-```sh
-$ yarn install
-```
-
-Foxglove Studio originally began as a fork of [Webviz](https://github.com/cruise-automation/webviz), an open source project developed by [Cruise](https://getcruise.com/). Most of the Webviz code has been rewritten, but some files still carry a Cruise license header where appropriate.
-
 ## Using with Rosboard
 
 We developed a new player compatible with also our own [fork of rosboard](https://github.com/kiwicampus/rosboard). To use it, you need to follow the instructions below:
@@ -100,6 +174,12 @@ We developed a new player compatible with also our own [fork of rosboard](https:
 
 1. **Use our Rosboard Fork**:
    You will need to use the [KiwiCampus fork for Rosboard](https://github.com/kiwicampus/rosboard) on the robot you want to connect to.
+
+:warning: Ubuntu users: the application may present some issues using GPU. In order to bypass the GPU and process it using directly the CPU (software), please run lichtblick using the variable `LIBGL_ALWAYS_SOFTWARE` set to `1`:
+
+```sh
+$ LIBGL_ALWAYS_SOFTWARE=1 yarn desktop:start
+```
 
 1. **Connecting to Rosboard**:
    Similar to other available protocols (such as Rosbridge and Foxglove websocket), you can connect to Rosboard by following these steps:
@@ -111,3 +191,15 @@ We developed a new player compatible with also our own [fork of rosboard](https:
    - Click `Open`.
 
 - **Note**: Ensure that your Rosboard instance is running and accessible via the websocket URL you intend to use.
+
+## :pencil: License (Open Source)
+
+Lichtblick follows an open core licensing model. Most functionality is available in this repository, and can be reproduced or modified per the terms of the [Mozilla Public License v2.0](/LICENSE).
+
+## :handshake: Contributing
+
+Contributions are welcome! Lichtblick is primarily built in TypeScript and ReactJS. All potential contributors must agree to the Contributor License Agreement outlined in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## :star: Credits
+
+Lichtblick originally began as a fork of [Foxglove Studio](https://github.com/foxglove/studio), an open-source project developed by [Foxglove](https://foxglove.dev/).

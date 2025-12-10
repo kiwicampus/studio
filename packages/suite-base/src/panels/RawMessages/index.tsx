@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -46,6 +46,7 @@ import { usePanelSettingsTreeUpdate } from "@lichtblick/suite-base/providers/Pan
 import { SaveConfig } from "@lichtblick/suite-base/types/panels";
 import { enumValuesByDatatypeAndField } from "@lichtblick/suite-base/util/enums";
 import { useJsonTreeTheme } from "@lichtblick/suite-base/util/globalConstants";
+import { customTypography } from "@lichtblick/theme";
 
 import { DiffSpan } from "./DiffSpan";
 import DiffStats from "./DiffStats";
@@ -64,7 +65,12 @@ import {
   getValueActionForValue,
 } from "./getValueActionForValue";
 import { NodeState, RawMessagesPanelConfig } from "./types";
-import { DATA_ARRAY_PREVIEW_LIMIT, generateDeepKeyPaths, toggleExpansion } from "./utils";
+import {
+  DATA_ARRAY_PREVIEW_LIMIT,
+  generateDeepKeyPaths,
+  getConstantNameByKeyPath,
+  toggleExpansion,
+} from "./utils";
 
 type Props = {
   config: Immutable<RawMessagesPanelConfig>;
@@ -97,7 +103,7 @@ export const getSingleValue = (data: unknown, queriedData: MessagePathDataItem[]
 const useStyles = makeStyles()((theme) => ({
   topic: {
     fontFamily: theme.typography.body1.fontFamily,
-    fontFeatureSettings: `${theme.typography.fontFeatureSettings}, "zero"`,
+    fontFeatureSettings: `${customTypography.fontFeatureSettings}, "zero"`,
   },
   hoverObserver: {
     display: "inline-flex",
@@ -333,7 +339,7 @@ function RawMessages(props: Props) {
             );
           }
 
-          let constantName: string | undefined;
+          let constantName: string | undefined = getConstantNameByKeyPath(keyPath, queriedData);
           if (structureItem) {
             const childStructureItem = getStructureItemForPath(
               structureItem,

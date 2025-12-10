@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -56,6 +56,7 @@ export type BuilderRenderStateInput = Immutable<{
   playerState: PlayerState | undefined;
   sharedPanelState: Record<string, unknown> | undefined;
   sortedTopics: readonly PlayerTopic[];
+  sortedServices?: readonly string[];
   subscriptions: Subscription[];
   watchedFields: Set<string>;
   config?: RenderStateConfig | undefined;
@@ -114,10 +115,13 @@ function initRenderStateBuilder(): BuildRenderStateFn {
       playerState,
       sharedPanelState,
       sortedTopics,
+      sortedServices,
       subscriptions,
       watchedFields,
       config,
     } = input;
+
+    const configTopics = config?.topics ?? {};
 
     const topicToSchemaNameMap = _.mapValues(
       _.keyBy(sortedTopics, "name"),
@@ -192,7 +196,6 @@ function initRenderStateBuilder(): BuildRenderStateFn {
         const topics = sortedTopics.map((topic): Topic => {
           const newTopic: Topic = {
             name: topic.name,
-            datatype: topic.schemaName ?? "",
             schemaName: topic.schemaName ?? "",
           };
 
@@ -222,6 +225,10 @@ function initRenderStateBuilder(): BuildRenderStateFn {
       }
     }
 
+    if (watchedFields.has("services")) {
+      updateRenderStateField("services", sortedServices ?? [], renderState.services, shouldRender);
+    }
+
     if (watchedFields.has("currentFrame")) {
       if (currentFrame && currentFrame !== prevCurrentFrame) {
         // If we have a new frame, emit that frame and process all messages on that frame.
@@ -235,7 +242,7 @@ function initRenderStateBuilder(): BuildRenderStateFn {
           const schemaName = topicToSchemaNameMap[messageEvent.topic];
           if (schemaName) {
             convertMessage(
-              { ...messageEvent, topicConfig: config?.topics[messageEvent.topic] },
+              { ...messageEvent, topicConfig: configTopics[messageEvent.topic] },
               topicSchemaConverters,
               postProcessedFrame,
             );
@@ -252,7 +259,7 @@ function initRenderStateBuilder(): BuildRenderStateFn {
           const schemaName = topicToSchemaNameMap[messageEvent.topic];
           if (schemaName) {
             convertMessage(
-              { ...messageEvent, topicConfig: config?.topics[messageEvent.topic] },
+              { ...messageEvent, topicConfig: configTopics[messageEvent.topic] },
               newConverters,
               postProcessedFrame,
             );
@@ -308,7 +315,7 @@ function initRenderStateBuilder(): BuildRenderStateFn {
               const schemaName = topicToSchemaNameMap[messageEvent.topic];
               if (schemaName) {
                 convertMessage(
-                  { ...messageEvent, topicConfig: config?.topics[messageEvent.topic] },
+                  { ...messageEvent, topicConfig: configTopics[messageEvent.topic] },
                   topicSchemaConverters,
                   frames,
                 );

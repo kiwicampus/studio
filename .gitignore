@@ -9,6 +9,14 @@ storybook-screenshots/
 storybook-static/
 # for jest --coverage
 coverage/
+.env
+
+# E2E tests
+e2e/reports
+e2e/tests/reports/desktop/*
+e2e/tests/reports/web/*
+e2e/tmp/*
+test-results/*
 
 # Yarn
 .yarn/*
@@ -16,9 +24,6 @@ coverage/
 !.yarn/plugins
 !.yarn/sdks
 .pnp.*
-
-# Extensions
-*.foxe
 
 # SonarQube files
 .sonar_lock

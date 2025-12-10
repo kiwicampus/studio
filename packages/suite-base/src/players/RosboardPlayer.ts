@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -26,7 +26,7 @@ import { MessageReader as ROS1MessageReader } from "@lichtblick/rosmsg-serializa
 import { MessageReader as ROS2MessageReader } from "@lichtblick/rosmsg2-serialization";
 import { Time, fromMillis, toSec } from "@lichtblick/rostime";
 import { ParameterValue } from "@lichtblick/suite";
-import PlayerProblemManager from "@lichtblick/suite-base/players/PlayerProblemManager";
+import PlayerAlertManager from "@lichtblick/suite-base/players/PlayerAlertManager";
 import { PLAYER_CAPABILITIES } from "@lichtblick/suite-base/players/constants";
 import {
   AdvertiseOptions,
@@ -44,7 +44,7 @@ import {
 import { RosDatatypes } from "@lichtblick/suite-base/types/RosDatatypes";
 import { bagConnectionsToDatatypes } from "@lichtblick/suite-base/util/bagConnectionsHelper";
 
-import RosboardClient, { PubTopic } from "./rosboardClient";
+import RosboardClient, { PubTopic } from "./RosboardClient";
 
 const log = Log.getLogger(__dirname);
 
@@ -75,6 +75,50 @@ function collateNodeDetails(
   );
 }
 */
+
+interface RosboardLaserScanMessage {
+  _ranges_uint16: {
+    bounds: [number, number];
+    points: string;
+  };
+  ranges?: Float32Array;
+  intensities?: Float32Array;
+  [key: string]: unknown;
+}
+
+interface RosboardImageMessage {
+  _data_jpeg: string;
+  _topic_name?: string;
+  encoding?: string;
+  data?: Uint8Array;
+  [key: string]: unknown;
+}
+
+interface RosboardOccupancyGridMessage {
+  _data_jpeg: string;
+  _topic_name?: string;
+  data?: Int8Array;
+  [key: string]: unknown;
+}
+
+interface RosboardPointCloud2Message {
+  _data_uint16: {
+    bounds: number[];
+    points: string;
+  };
+  width?: number;
+  height?: number;
+  point_step?: number;
+  row_step?: number;
+  data?: Uint8Array;
+  [key: string]: unknown;
+}
+
+interface RosboardMessage {
+  _topic_name?: string;
+  _topic_type?: string;
+  [key: string]: unknown;
+}
 
 function isClockMessage(topic: string, msg: unknown): msg is { clock: Time } {
   const maybeClockMsg = msg as { clock?: Time };
@@ -133,7 +177,7 @@ export default class RosboardPlayer implements Player {
   #receivedBytes: number = 0;
   #metricsCollector: PlayerMetricsCollectorInterface;
   #presence: PlayerPresence = PlayerPresence.NOT_PRESENT;
-  #problems = new PlayerProblemManager();
+  #alerts = new PlayerAlertManager();
   #emitTimer?: ReturnType<typeof setTimeout>;
   #serviceTypeCache = new Map<string, Promise<string>>();
   readonly #sourceId: string;
@@ -164,7 +208,7 @@ export default class RosboardPlayer implements Player {
     if (this.#rosClient != undefined) {
       throw new Error(`Attempted to open a second Rosboard connection`);
     }
-    this.#problems.removeProblem("rosboard:connection-failed");
+    this.#alerts.removeAlert("rosboard:connection-failed");
     log.info(`Opening connection to ${this.#url}`);
 
     /* Old rosClient definition using roslibjs */
@@ -178,7 +222,7 @@ export default class RosboardPlayer implements Player {
         return;
       }
       this.#presence = PlayerPresence.PRESENT;
-      this.#problems.removeProblem("rosboard:connection-failed");
+      this.#alerts.removeAlert("rosboard:connection-failed");
       this.#rosClient = rosClient;
 
       this.#setupPublishers();
@@ -186,14 +230,12 @@ export default class RosboardPlayer implements Player {
     });
 
     rosClient.on("error", (err) => {
-      if (err) {
-        this.#problems.addProblem("rosboard:error", {
-          severity: "warn",
-          message: "Rosboard error",
-          error: err,
-        });
-        this.#emitState();
-      }
+      this.#alerts.addAlert("rosboard:error", {
+        severity: "warn",
+        message: "Rosboard error",
+        error: err,
+      });
+      this.#emitState();
     });
 
     rosClient.on("close", () => {
@@ -204,7 +246,7 @@ export default class RosboardPlayer implements Player {
       }
       for (const topicName of this.#topicSubscriptions) {
         // topic.unsubscribe();
-        if (this.#rosClient !== undefined) {
+        if (this.#rosClient != undefined) {
           this.#rosClient.unsubscribe(topicName);
         }
         this.#topicSubscriptions.delete(topicName);
@@ -212,7 +254,7 @@ export default class RosboardPlayer implements Player {
       rosClient.close(); // ensure the underlying worker is cleaned up
       this.#rosClient = undefined;
 
-      this.#problems.addProblem("rosboard:connection-failed", {
+      this.#alerts.addAlert("rosboard:connection-failed", {
         severity: "error",
         message: "Connection failed",
         tip: `Check that the rosboard WebSocket server at ${this.#url} is reachable.`,
@@ -235,8 +277,8 @@ export default class RosboardPlayer implements Player {
 
   async #requestTopics(opt?: { forceUpdate: boolean }): Promise<void> {
     const { forceUpdate = false } = opt ?? {};
-    // clear problems before each topics request so we don't have stale problems from previous failed requests
-    this.#problems.removeProblems((id) => id.startsWith("requestTopics:"));
+    // clear alerts before each topics request so we don't have stale alerts from previous failed requests
+    this.#alerts.removeAlerts((id: string) => id.startsWith("requestTopics:"));
 
     if (this.#requestTopicsTimeout) {
       clearTimeout(this.#requestTopicsTimeout);
@@ -251,7 +293,7 @@ export default class RosboardPlayer implements Player {
     // This logic adds a warning after 5 seconds (picked arbitrarily) to display a notice to the user.
 
     const topicsStallWarningTimeout = setTimeout(() => {
-      this.#problems.addProblem("topicsAndRawTypesTimeout", {
+      this.#alerts.addAlert("topicsAndRawTypesTimeout", {
         severity: "warn",
         message: "Taking too long to get topics and raw types.",
       });
@@ -260,16 +302,16 @@ export default class RosboardPlayer implements Player {
     }, 5000);
 
     try {
-      const result = rosClient.availableTopics;
+      const result = rosClient.availableTopics();
 
-      if (this.#typeIndex == undefined) {
+      if (Object.keys(this.#typeIndex).length === 0) {
         rosClient.requestTopicsFull();
       }
-      this.#typeIndex = rosClient.topicsFull;
+      this.#typeIndex = rosClient.topicsFull();
 
       clearTimeout(topicsStallWarningTimeout);
 
-      this.#problems.removeProblem("topicsAndRawTypesTimeout");
+      this.#alerts.removeAlert("topicsAndRawTypesTimeout");
 
       const topicsMissingDatatypes: string[] = [];
       const topics: TopicWithSchemaName[] = [];
@@ -281,7 +323,7 @@ export default class RosboardPlayer implements Player {
       for (const [topicName, type] of Object.entries(result)) {
         const messageDefinition = this.#typeIndex[type];
 
-        if (type == undefined || messageDefinition == undefined) {
+        if (type === "" || messageDefinition == undefined) {
           topics.push({ name: topicName + " (UNDEFINED DATATYPE)", schemaName: type });
           topicsMissingDatatypes.push(topicName);
           continue;
@@ -289,14 +331,11 @@ export default class RosboardPlayer implements Player {
         topics.push({ name: topicName, schemaName: type });
         datatypeDescriptions.push({ type, messageDefinition });
         const parsedDefinition = parseMessageDefinition(messageDefinition, {
-          ros2: this.#rosVersion === 2,
+          ros2: true,
         });
         // https://github.com/typescript-eslint/typescript-eslint/issues/6632
         if (!messageReaders[type]) {
-          messageReaders[type] =
-            this.#rosVersion !== 2
-              ? new ROS1MessageReader(parsedDefinition)
-              : new ROS2MessageReader(parsedDefinition);
+          messageReaders[type] = new ROS2MessageReader(parsedDefinition);
         }
       }
 
@@ -313,7 +352,7 @@ export default class RosboardPlayer implements Player {
       }
 
       if (topicsMissingDatatypes.length > 0) {
-        this.#problems.addProblem("requestTopics:missing-types", {
+        this.#alerts.addAlert("requestTopics:missing-types", {
           severity: "warn",
           message: "Could not resolve all message types",
           tip: `Message types could not be found for these topics: ${topicsMissingDatatypes.join(
@@ -333,7 +372,7 @@ export default class RosboardPlayer implements Player {
       this.#providerTopics = sortedTopics;
 
       this.#providerDatatypes = bagConnectionsToDatatypes(datatypeDescriptions, {
-        ros2: this.#rosVersion === 2,
+        ros2: true,
       });
       this.#messageReadersByDatatype = messageReaders;
 
@@ -342,9 +381,9 @@ export default class RosboardPlayer implements Player {
     } catch (error) {
       log.error(error);
       clearTimeout(topicsStallWarningTimeout);
-      this.#problems.removeProblem("topicsAndRawTypesTimeout");
+      this.#alerts.removeAlert("topicsAndRawTypesTimeout");
 
-      this.#problems.addProblem("requestTopics:error", {
+      this.#alerts.addAlert("requestTopics:error", {
         severity: "error",
         message: "Failed to fetch topics from rosboard",
         error,
@@ -376,7 +415,7 @@ export default class RosboardPlayer implements Player {
         profile: undefined,
         playerId: this.#id,
         activeData: undefined,
-        problems: this.#problems.problems(),
+        alerts: this.#alerts.alerts(),
         urlState: {
           sourceId: this.#sourceId,
           parameters: { url: this.#url },
@@ -403,7 +442,7 @@ export default class RosboardPlayer implements Player {
       capabilities: CAPABILITIES,
       profile: this.#rosVersion === 2 ? "ros2" : "ros1",
       playerId: this.#id,
-      problems: this.#problems.problems(),
+      alerts: this.#alerts.alerts(),
       urlState: {
         sourceId: this.#sourceId,
         parameters: { url: this.#url },
@@ -456,7 +495,7 @@ export default class RosboardPlayer implements Player {
 
   // Rosboard features some compressed messages to come also decoded
   // in base64
-  public _base64decode(base64: string) {
+  public _base64decode(base64: string): ArrayBuffer {
     const binary_string = window.atob(base64);
     const len = binary_string.length;
     const bytes = new Uint8Array(len);
@@ -468,10 +507,12 @@ export default class RosboardPlayer implements Player {
 
   // In rosboard, laser scan messages come scaled into uint16 values
   // and use _ranges_uint16.bounds to scale them back to Float32 renderable format
-  public decodeLaserScanMsg(message: any): void {
+  public decodeLaserScanMsg(message: RosboardLaserScanMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rbounds = message._ranges_uint16.bounds;
 
-    const rdata = this._base64decode(message._ranges_uint16.points);
+    // eslint-disable-next-line no-underscore-dangle
+    const rdata = this._base64decode(String(message._ranges_uint16.points));
 
     const rview = new DataView(rdata);
     const num_ranges = rdata.byteLength / 2;
@@ -499,23 +540,28 @@ export default class RosboardPlayer implements Player {
 
   // Images come in regular base64-encoded jpeg data which
   // is decoded into it's raw format for visualization
-  public decodeImageMsg(message: any): void {
+  public decodeImageMsg(message: RosboardImageMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = message._data_jpeg;
+    // eslint-disable-next-line no-underscore-dangle
+    const topicName = message._topic_name;
 
-    if (this.#cachedImages[message._topic_name] != undefined) {
-      message.data = this.#cachedImages[message._topic_name];
+    if (topicName != undefined && this.#cachedImages[topicName] != undefined) {
+      message.data = this.#cachedImages[topicName];
     }
 
     const numChannels: number = message.encoding === "mono8" ? 1 : 3;
 
     // Decode the base64 JPEG to pixel data
-    decodeBase64Jpeg(rdata, numChannels)
+    decodeBase64Jpeg(String(rdata), numChannels)
       .then((pixelData) => {
         // Assign the decoded RGB pixel data to message.data
         message.data = pixelData; // Uint8Array
-        this.#cachedImages[message._topic_name] = pixelData;
+        if (topicName != undefined) {
+          this.#cachedImages[topicName] = pixelData;
+        }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error("Error decoding image:", error);
       });
   }
@@ -523,35 +569,38 @@ export default class RosboardPlayer implements Player {
   // Occupancy grid messages come in regular base64 png format
   // In contrast with decodeImageMsg, the raw rgb data must be merged
   // into a single channel gray-scaled data
-  public decodeOccupancyGridMsg(message: any): void {
+  public decodeOccupancyGridMsg(message: RosboardOccupancyGridMessage): void {
+    // eslint-disable-next-line no-underscore-dangle
     const rdata = message._data_jpeg;
+    // eslint-disable-next-line no-underscore-dangle
+    const topicName = message._topic_name;
 
-    if (this.#cachedGrids[message._topic_name] != undefined) {
-      message.data = this.#cachedGrids[message._topic_name];
+    if (topicName != undefined && this.#cachedGrids[topicName] != undefined) {
+      message.data = this.#cachedGrids[topicName];
     }
 
     // Decode the base64 PNG to pixel data
-    decodeBase64Png(rdata)
+    decodeBase64Png(String(rdata))
       .then((pixelData) => {
         // Assign the decoded RGB pixel data to message.data
         const decodedA = new Int8Array(pixelData); // Uint8Array
 
-        const sumsArray = [];
+        const sumsArray: number[] = [];
         const alen = decodedA.length;
-        if (decodedA != undefined) {
-          // Transform RGB to grayscale using luminocity method coefficients
-          for (let i = 0; i < alen; i += 3) {
-            sumsArray.push(
-              0.3 * (decodedA[i] || 0) +
-                0.59 * (decodedA[i + 1] || 0) +
-                0.11 * (decodedA[i + 2] || 0),
-            );
-          }
-          this.#cachedGrids[message._topic_name] = new Int8Array(sumsArray);
-          message.data = this.#cachedGrids[message._topic_name];
+        // Transform RGB to grayscale using luminocity method coefficients
+        for (let i = 0; i < alen; i += 3) {
+          sumsArray.push(
+            0.3 * (decodedA[i] ?? 0) +
+              0.59 * (decodedA[i + 1] ?? 0) +
+              0.11 * (decodedA[i + 2] ?? 0),
+          );
+        }
+        if (topicName != undefined) {
+          this.#cachedGrids[topicName] = new Int8Array(sumsArray);
+          message.data = this.#cachedGrids[topicName];
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error("Error decoding image:", error);
       });
   }
@@ -561,20 +610,22 @@ export default class RosboardPlayer implements Player {
   // we are using scaleBackInt16 helper to handle the uint16 to Float32
   // convertions in an sligtly different manner as in the former example:
   // (this time inf/NaN values are not mapped)
-  public decodePointCloud2Msg(message: any): void {
-    const rdata = this._base64decode(message._data_uint16.points);
+  public decodePointCloud2Msg(message: RosboardPointCloud2Message): void {
+    // eslint-disable-next-line no-underscore-dangle
+    const rdata = this._base64decode(String(message._data_uint16.points));
     const rview = new DataView(rdata);
 
     const num_ranges = rdata.byteLength / 6;
 
+    // eslint-disable-next-line no-underscore-dangle
     const bounds: number[] = message._data_uint16.bounds;
 
-    const xmin: number = bounds[0] || 0,
-      xmax: number = bounds[1] || 0;
-    const ymin: number = bounds[2] || 0,
-      ymax: number = bounds[3] || 0;
-    const zmin: number = bounds[4] || 0,
-      zmax: number = bounds[5] || 0;
+    const xmin: number = bounds[0] ?? 0;
+    const xmax: number = bounds[1] ?? 0;
+    const ymin: number = bounds[2] ?? 0;
+    const ymax: number = bounds[3] ?? 0;
+    const zmin: number = bounds[4] ?? 0;
+    const zmax: number = bounds[5] ?? 0;
 
     const pointsFloat32: Float32Array = new Float32Array(num_ranges * 3);
 
@@ -642,7 +693,7 @@ export default class RosboardPlayer implements Player {
 
       const problemId = `message:${topicName}`;
 
-      this.#rosClient.addTopicCallback(topicName, (message) => {
+      this.#rosClient.addTopicCallback(topicName, (message: RosboardMessage) => {
         if (!this.#providerTopics) {
           return;
         }
@@ -650,14 +701,16 @@ export default class RosboardPlayer implements Player {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
           // const innerMessage = messageReader.readMessage(bytes);
-          if (message._topic_type === "sensor_msgs/msg/LaserScan") {
-            this.decodeLaserScanMsg(message);
-          } else if (message._topic_type === "sensor_msgs/msg/Image") {
-            this.decodeImageMsg(message);
-          } else if (message._topic_type === "nav_msgs/msg/OccupancyGrid") {
-            this.decodeOccupancyGridMsg(message);
-          } else if (message._topic_type === "sensor_msgs/msg/PointCloud2") {
-            this.decodePointCloud2Msg(message);
+          // eslint-disable-next-line no-underscore-dangle
+          const topicType = message._topic_type;
+          if (topicType === "sensor_msgs/msg/LaserScan") {
+            this.decodeLaserScanMsg(message as RosboardLaserScanMessage);
+          } else if (topicType === "sensor_msgs/msg/Image") {
+            this.decodeImageMsg(message as RosboardImageMessage);
+          } else if (topicType === "nav_msgs/msg/OccupancyGrid") {
+            this.decodeOccupancyGridMsg(message as RosboardOccupancyGridMessage);
+          } else if (topicType === "sensor_msgs/msg/PointCloud2") {
+            this.decodePointCloud2Msg(message as RosboardPointCloud2Message);
           }
 
           const innerMessage = message;
@@ -686,7 +739,7 @@ export default class RosboardPlayer implements Player {
             };
             this.#parsedMessages.push(msg);
           }
-          this.#problems.removeProblem(problemId);
+          this.#alerts.removeAlert(problemId);
 
           // Update the message count for this topic
           let stats = this.#providerTopicsStats.get(topicName);
@@ -697,11 +750,11 @@ export default class RosboardPlayer implements Player {
             }
             stats.numMessages++;
           }
-        } catch (error) {
-          this.#problems.addProblem(problemId, {
+        } catch (error: unknown) {
+          this.#alerts.addAlert(problemId, {
             severity: "error",
             message: `Failed to parse message on ${topicName}`,
-            error,
+            error: error instanceof Error ? error : new Error(String(error)),
           });
         }
 
@@ -741,13 +794,13 @@ export default class RosboardPlayer implements Player {
   }
 
   public setParameter(_key: string, _value: ParameterValue): void {
-    /* TODO */
-    // Call unused variables to prevent Linting errors
-    this.#topicPublishers;
-    this.#advertisements;
-    this.#serviceTypeCache;
-    this.#getServiceType;
-    this.#refreshSystemState;
+    // Parameter editing is not supported by the Rosboard connection
+    // These private fields are intentionally unused as they're part of future functionality
+    void this.#topicPublishers;
+    void this.#advertisements;
+    void this.#serviceTypeCache;
+    void this.#getServiceType;
+    void this.#refreshSystemState;
 
     throw new Error("Parameter editing is not supported by the Rosboard connection");
   }
@@ -772,8 +825,7 @@ export default class RosboardPlayer implements Player {
   }
 
   // Query the type name for this service. Cache the query to avoid looking it up again.
-  async #getServiceType(service: string): Promise<string> {
-    service;
+  async #getServiceType(_service: string): Promise<string> {
     /* (Roslibjs specific)
     if (!this.#rosClient) {
       throw new Error("Not connected");
@@ -796,10 +848,10 @@ export default class RosboardPlayer implements Player {
     return "";
   }
 
-  public async callService(service: string, request: unknown): Promise<unknown> {
-    request;
-    service;
-    /* TODO
+  public async callService(_service: string, _request: unknown): Promise<unknown> {
+    // Service calls are not yet supported by the Rosboard connection
+    throw new Error("Service calls are not supported by the Rosboard connection");
+    /*
     if (!this.#rosClient) {
       throw new Error("Not connected");
     }
@@ -848,6 +900,11 @@ export default class RosboardPlayer implements Player {
   }
   public setGlobalVariables(): void {
     // no-op
+  }
+
+  public getBatchIterator(): undefined {
+    // RosboardPlayer does not support batch iteration
+    return undefined;
   }
 
   #setupPublishers(): void {
@@ -944,8 +1001,10 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
         return;
       }
 
-      canvas.width = img.width || 0; // Ensure width is defined or default to 0
-      canvas.height = img.height || 0; // Ensure height is defined or default to 0
+      const width = img.width > 0 && !isNaN(img.width) ? img.width : 0;
+      const height = img.height > 0 && !isNaN(img.height) ? img.height : 0;
+      canvas.width = width;
+      canvas.height = height;
       ctx.drawImage(img, 0, 0);
 
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -956,13 +1015,13 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
         for (let i = 0, j = 0; i < data.length; i += 4, j++) {
           // Assuming grayscale value is taken from the red channel which is safe
           // since the original image was actually grayscale
-          resultData[j] = data[i] || 0;
+          resultData[j] = data[i] ?? 0;
         }
       } else if (numChannels === 3) {
         for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-          resultData[j] = data[i] || 0;
-          resultData[j + 1] = data[i + 1] || 0;
-          resultData[j + 2] = data[i + 2] || 0;
+          resultData[j] = data[i] ?? 0;
+          resultData[j + 1] = data[i + 1] ?? 0;
+          resultData[j + 2] = data[i + 2] ?? 0;
         }
       } else {
         reject(new Error("Unsupported number of channels"));
@@ -972,8 +1031,8 @@ async function decodeBase64Jpeg(base64String: string, numChannels: number): Prom
       resolve(resultData);
     };
 
-    img.onerror = (error) => {
-      reject(error);
+    img.onerror = (error: unknown) => {
+      reject(error instanceof Error ? error : new Error(String(error)));
     };
 
     img.src = `data:image/jpeg;base64,${base64String}`;
@@ -990,21 +1049,23 @@ async function decodeBase64Png(base64String: string): Promise<Uint8Array> {
         reject(new Error("Could not get 2D context"));
         return;
       }
-      canvas.width = img.width || 0; // Ensure width is defined or default to 0
-      canvas.height = img.height || 0; // Ensure height is defined or default to 0
+      const width = img.width > 0 ? img.width : 0;
+      const height = img.height > 0 ? img.height : 0;
+      canvas.width = width;
+      canvas.height = height;
       ctx.drawImage(img, 0, 0);
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const rgbData = new Uint8Array(canvas.width * canvas.height * 3);
       for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
-        rgbData[j] = data[i] || 0;
-        rgbData[j + 1] = data[i + 1] || 0;
-        rgbData[j + 2] = data[i + 2] || 0;
+        rgbData[j] = data[i] ?? 0;
+        rgbData[j + 1] = data[i + 1] ?? 0;
+        rgbData[j + 2] = data[i + 2] ?? 0;
       }
       resolve(rgbData);
     };
     img.src = `data:image/png;base64,${base64String}`;
-    img.onerror = (error) => {
-      reject(error);
+    img.onerror = (error: unknown) => {
+      reject(error instanceof Error ? error : new Error(String(error)));
     };
   });
 }

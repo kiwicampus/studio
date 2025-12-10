@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -26,6 +26,8 @@ export const panels = {
   parametersDescription: "Read and set parameters for a data source.",
   plot: "Plot",
   plotDescription: "Plot numerical values over time or other values.",
+  pieChart: "Pie Chart",
+  pieChartDescription: "Display a pie chart based on a continuous value.",
   publish: "Publish",
   publishDescription: "Publish messages to the data source (live connections only).",
   rawMessages: "Raw Messages",

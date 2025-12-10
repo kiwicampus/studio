@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -7,18 +7,20 @@
 
 import * as Comlink from "@lichtblick/comlink";
 import { IterableSourceInitializeArgs } from "@lichtblick/suite-base/players/IterablePlayer/IIterableSource";
-import { WorkerIterableSourceWorker } from "@lichtblick/suite-base/players/IterablePlayer/WorkerIterableSourceWorker";
+import { WorkerSerializedIterableSourceWorker } from "@lichtblick/suite-base/players/IterablePlayer/WorkerSerializedIterableSourceWorker";
 
 import { BagIterableSource } from "./BagIterableSource";
 
-export function initialize(args: IterableSourceInitializeArgs): WorkerIterableSourceWorker {
+export function initialize(
+  args: IterableSourceInitializeArgs,
+): WorkerSerializedIterableSourceWorker {
   if (args.file) {
     const source = new BagIterableSource({ type: "file", file: args.file });
-    const wrapped = new WorkerIterableSourceWorker(source);
+    const wrapped = new WorkerSerializedIterableSourceWorker(source);
     return Comlink.proxy(wrapped);
   } else if (args.url) {
     const source = new BagIterableSource({ type: "remote", url: args.url });
-    const wrapped = new WorkerIterableSourceWorker(source);
+    const wrapped = new WorkerSerializedIterableSourceWorker(source);
     return Comlink.proxy(wrapped);
   }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -7,10 +7,10 @@
 
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import CheckIcon from "@mui/icons-material/Check";
-import { Button, ListItemIcon, ListItemText, Menu, MenuItem } from "@mui/material";
+import { ListItemIcon, ListItemText, Menu, MenuItem } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { makeStyles } from "tss-react/mui";
 
+import HoverableIconButton from "@lichtblick/suite-base/components/HoverableIconButton";
 import { useMessagePipeline } from "@lichtblick/suite-base/components/MessagePipeline";
 import {
   LayoutState,
@@ -25,19 +25,7 @@ const formatSpeed = (val: number) => `${val < 0.1 ? val.toFixed(2) : val}×`;
 const configSpeedSelector = (state: LayoutState) =>
   state.selectedLayout?.data?.playbackConfig.speed;
 
-const useStyles = makeStyles()((theme) => ({
-  button: {
-    padding: theme.spacing(0.625, 0.5),
-    backgroundColor: "transparent",
-
-    ":hover": {
-      backgroundColor: theme.palette.action.hover,
-    },
-  },
-}));
-
 export default function PlaybackSpeedControls(): React.JSX.Element {
-  const { classes } = useStyles();
   const [anchorEl, setAnchorEl] = useState<undefined | HTMLElement>(undefined);
   const open = Boolean(anchorEl);
   const configSpeed = useCurrentLayoutSelector(configSpeedSelector);
@@ -73,30 +61,25 @@ export default function PlaybackSpeedControls(): React.JSX.Element {
 
   return (
     <>
-      <Button
-        className={classes.button}
-        id="playback-speed-button"
-        aria-controls={open ? "playback-speed-menu" : undefined}
-        aria-haspopup="true"
-        aria-expanded={open ? "true" : undefined}
+      <HoverableIconButton
+        disabled={setPlaybackSpeed == undefined}
+        size="small"
+        title="Playback speed"
+        icon={<ArrowDropDownIcon />}
+        activeIcon={<ArrowDropDownIcon />}
         onClick={handleClick}
         data-testid="PlaybackSpeedControls-Dropdown"
-        disabled={setPlaybackSpeed == undefined}
-        disableRipple
-        variant="contained"
-        color="inherit"
-        endIcon={<ArrowDropDownIcon />}
-      >
-        {displayedSpeed == undefined ? "–" : formatSpeed(displayedSpeed)}
-      </Button>
+      />
       <Menu
         id="playback-speed-menu"
         anchorEl={anchorEl}
         open={open}
         onClose={handleClose}
-        MenuListProps={{
-          "aria-labelledby": "playback-speed-button",
-          dense: true,
+        slotProps={{
+          list: {
+            "aria-labelledby": "playback-speed-button",
+            dense: true,
+          },
         }}
         anchorOrigin={{
           vertical: "top",
@@ -124,7 +107,7 @@ export default function PlaybackSpeedControls(): React.JSX.Element {
             <ListItemText
               inset={displayedSpeed !== option}
               primary={formatSpeed(option)}
-              primaryTypographyProps={{ variant: "inherit" }}
+              slotProps={{ primary: { variant: "inherit" } }}
             />
           </MenuItem>
         ))}

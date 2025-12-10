@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -29,6 +29,7 @@ import {
   useSetHoverValue,
 } from "@lichtblick/suite-base/context/TimelineInteractionStateContext";
 import { PlayerPresence } from "@lichtblick/suite-base/players/types";
+import BroadcastManager from "@lichtblick/suite-base/util/broadcast/BroadcastManager";
 
 import { EventsOverlay } from "./EventsOverlay";
 import PlaybackBarHoverTicks from "./PlaybackBarHoverTicks";
@@ -98,12 +99,15 @@ export default function Scrubber(props: Props): React.JSX.Element {
       if (!latestStartTime.current || !latestEndTime.current) {
         return;
       }
-      onSeek(
-        addTimes(
-          latestStartTime.current,
-          fromSec(fraction * toSec(subtractTimes(latestEndTime.current, latestStartTime.current))),
-        ),
+      const timeToSeek = addTimes(
+        latestStartTime.current,
+        fromSec(fraction * toSec(subtractTimes(latestEndTime.current, latestStartTime.current))),
       );
+      onSeek(timeToSeek);
+      BroadcastManager.getInstance().postMessage({
+        type: "seek",
+        time: timeToSeek,
+      });
     },
     [onSeek, latestEndTime, latestStartTime],
   );
@@ -203,9 +207,8 @@ export default function Scrubber(props: Props): React.JSX.Element {
       }
       placement="top"
       disableInteractive
-      TransitionComponent={Fade}
-      TransitionProps={{ timeout: 0 }}
-      PopperProps={popperProps}
+      slots={{ transition: Fade }}
+      slotProps={{ transition: { timeout: 0 }, popper: popperProps }}
     >
       <Stack
         direction="row"
@@ -218,7 +221,7 @@ export default function Scrubber(props: Props): React.JSX.Element {
         <Stack position="absolute" flex="auto" fullWidth style={{ height: 6 }}>
           <ProgressPlot loading={loading} availableRanges={ranges} />
         </Stack>
-        <Stack fullHeight fullWidth position="absolute" flex={1}>
+        <Stack fullHeight fullWidth position="absolute" flex={1} data-testid="playback-slider">
           <Slider
             disabled={min == undefined || max == undefined}
             fraction={fraction}

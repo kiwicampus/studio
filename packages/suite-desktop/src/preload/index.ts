@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -13,8 +13,8 @@ import { PreloaderSockets } from "@lichtblick/electron-socket/preloader";
 import Logger from "@lichtblick/log";
 import { NetworkInterface, OsContext } from "@lichtblick/suite-base/src/OsContext";
 
+import { ExtensionsHandler } from "./ExtensionHandler";
 import LocalFileStorage from "./LocalFileStorage";
-import { getExtensions, installExtension, loadExtension, uninstallExtension } from "./extensions";
 import { fetchLayouts } from "./layouts";
 import { decodeRendererArg } from "../common/rendererArgs";
 import {
@@ -33,7 +33,9 @@ import { LICHTBLICK_PRODUCT_NAME, LICHTBLICK_PRODUCT_VERSION } from "../common/w
 const ignoreDeepLinks = document.cookie.includes("fox.ignoreDeepLinks=true");
 document.cookie = "fox.ignoreDeepLinks=;max-age=0;";
 
-const deepLinks = ignoreDeepLinks ? [] : decodeRendererArg("deepLinks", window.process.argv) ?? [];
+const deepLinks = ignoreDeepLinks
+  ? []
+  : (decodeRendererArg("deepLinks", window.process.argv) ?? []);
 
 export function main(): void {
   const log = Logger.getLogger(__filename);
@@ -60,6 +62,7 @@ export function main(): void {
       input.setAttribute("hidden", "true");
       input.setAttribute("type", "file");
       input.setAttribute("id", "electron-open-file-input");
+      input.setAttribute("multiple", "true");
       document.body.appendChild(input);
 
       // let main know we are ready to accept open-file requests
@@ -102,6 +105,17 @@ export function main(): void {
   ipcRenderer.on("maximize", () => (isMaximized = true));
   ipcRenderer.on("unmaximize", () => (isMaximized = false));
 
+  let extensionHandler: ExtensionsHandler | undefined;
+
+  const getExtensionHandler = async (): Promise<ExtensionsHandler> => {
+    if (!extensionHandler) {
+      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
+      const userExtensionsDir = pathJoin(homePath, ".lichtblick-suite", "extensions");
+      extensionHandler = new ExtensionsHandler(userExtensionsDir);
+    }
+    return extensionHandler;
+  };
+
   const desktopBridge: Desktop = {
     addIpcEventListener(eventName: ForwardedWindowEvent, handler: () => void) {
       ipcRenderer.on(eventName, handler);
@@ -133,31 +147,31 @@ export function main(): void {
       // Reload the window so the new preloader script can read the cookie
       window.location.reload();
     },
+    // Layout management
+    async fetchLayouts() {
+      const userLayoutsDir = pathJoin(
+        (await ipcRenderer.invoke("getHomePath")) as string,
+        ".lichtblick-suite",
+        "layouts",
+      );
+      return await fetchLayouts(userLayoutsDir);
+    },
+    // Extension management
     async getExtensions() {
-      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
-      const userExtensionRoot = pathJoin(homePath, ".lichtblick-suite", "extensions");
-      const userExtensions = await getExtensions(userExtensionRoot);
-      return userExtensions;
+      const handler = await getExtensionHandler();
+      return await handler.list();
     },
     async loadExtension(id: string) {
-      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
-      const userExtensionRoot = pathJoin(homePath, ".lichtblick-suite", "extensions");
-      return await loadExtension(id, userExtensionRoot);
-    },
-    async fetchLayouts() {
-      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
-      const userExtensionRoot = pathJoin(homePath, ".lichtblick-suite", "layouts");
-      return await fetchLayouts(userExtensionRoot);
+      const handler = await getExtensionHandler();
+      return await handler.load(id);
     },
     async installExtension(foxeFileData: Uint8Array) {
-      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
-      const userExtensionRoot = pathJoin(homePath, ".lichtblick-suite", "extensions");
-      return await installExtension(foxeFileData, userExtensionRoot);
+      const handler = await getExtensionHandler();
+      return await handler.install(foxeFileData);
     },
     async uninstallExtension(id: string): Promise<boolean> {
-      const homePath = (await ipcRenderer.invoke("getHomePath")) as string;
-      const userExtensionRoot = pathJoin(homePath, ".lichtblick-suite", "extensions");
-      return await uninstallExtension(id, userExtensionRoot);
+      const handler = await getExtensionHandler();
+      return await handler.uninstall(id);
     },
     handleTitleBarDoubleClick() {
       ipcRenderer.send("titleBarDoubleClicked");

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 
-// SPDX-FileCopyrightText: Copyright (C) 2023-2024 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
@@ -63,6 +63,7 @@ describe("useDataSourceInfo", () => {
     });
     expect(result.current).toEqual<typeof result.current>({
       topics: [{ name: "/foo", schemaName: "Foo" }],
+      services: [],
       datatypes: new Map(Object.entries({ Foo: { definitions: [] } })),
       capabilities: ["hello"],
       startTime: { sec: 0, nsec: 1 },
@@ -90,6 +91,7 @@ describe("useDataSourceInfo", () => {
     });
     expect(result.current).toEqual<typeof result.current>({
       topics: [{ name: "/foo", schemaName: "Foo" }],
+      services: [],
       datatypes: new Map(Object.entries({ Foo: { definitions: [] } })),
       capabilities: ["hello"],
       startTime: { sec: 0, nsec: 1 },
@@ -107,6 +109,7 @@ describe("useDataSourceInfo", () => {
         { name: "/bar", schemaName: "Bar" },
         { name: "/foo", schemaName: "Foo" },
       ],
+      services: [],
       datatypes: new Map(Object.entries({ Foo: { definitions: [] } })),
       capabilities: ["hello"],
       startTime: { sec: 0, nsec: 1 },
