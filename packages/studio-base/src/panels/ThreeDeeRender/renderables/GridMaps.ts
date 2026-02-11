@@ -289,6 +289,11 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
     this.saveSetting(path as ["topics", string, string], action.payload.value);
     const renderable = this.renderables.get(topicName) as GridMapRenderable | undefined;
     if (renderable) {
+      const topicConfig = this.renderer.config.topics[topicName] as
+        | Partial<LayerSettingsGridMap>
+        | undefined;
+      renderable.userData.settings = { ...DEFAULT_SETTINGS, ...topicConfig };
+
       const gridMap = this.#gridMap.get(topicName);
       if (gridMap) {
         this.#updateGridMapRenderable(renderable, gridMap, renderable.userData.receiveTime);
