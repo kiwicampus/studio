@@ -194,6 +194,44 @@ export type OccupancyGrid = {
   data: Int8Array | number[];
 };
 
+/** std_msgs/MultiArrayDimension */
+export type MultiArrayDimension = {
+  label: string;
+  size: number;
+  stride: number;
+};
+
+/** std_msgs/MultiArrayLayout */
+export type MultiArrayLayout = {
+  dim: MultiArrayDimension[];
+  data_offset: number;
+};
+
+/** std_msgs/Float32MultiArray */
+export type Float32MultiArray = {
+  layout: MultiArrayLayout;
+  data: Float32Array | number[];
+};
+
+/** grid_map_msgs/GridMapInfo - embedded in GridMap */
+export type GridMapInfo = {
+  header: Header;
+  resolution: number;
+  length_x: number;
+  length_y: number;
+  pose: Pose;
+};
+
+/** grid_map_msgs/msg/GridMap - ROS2 message for 2.5D grid maps */
+export type GridMap = {
+  info: GridMapInfo;
+  layers: string[];
+  basic_layers: string[];
+  data: Float32MultiArray[];
+  outer_start_index: number;
+  inner_start_index: number;
+};
+
 export type PoseStamped = {
   header: Header;
   pose: Pose;
@@ -305,6 +343,10 @@ addRosDataType(MARKER_ARRAY_DATATYPES, "studio_msgs/MarkerArray");
 
 export const OCCUPANCY_GRID_DATATYPES = new Set<string>();
 addRosDataType(OCCUPANCY_GRID_DATATYPES, "nav_msgs/OccupancyGrid");
+
+export const GRID_MAP_DATATYPES = new Set<string>();
+addRosDataType(GRID_MAP_DATATYPES, "grid_map_msgs/msg/GridMap");
+addRosDataType(GRID_MAP_DATATYPES, "grid_map_msgs/GridMap");
 
 export const POINTCLOUD_DATATYPES = new Set<string>();
 addRosDataType(POINTCLOUD_DATATYPES, "sensor_msgs/PointCloud2");

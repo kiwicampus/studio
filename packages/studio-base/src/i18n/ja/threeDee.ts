@@ -8,6 +8,13 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   // Common
   color: "色",
   colorMode: "カラーモード",
+  colorLayer: "カラーレイヤー",
+  flatTerrain: "フラット地形",
+  gridMapAutoMinMax: "自動最小/最大",
+  gridMapMaxValue: "最大値",
+  gridMapMinValue: "最小値",
+  gridMapShowGridLines: "グリッド線を表示",
+  heightLayer: "高さレイヤー",
   frame: "フレーム",
   lineWidth: "ライン幅",
   position: "位置",
@@ -81,12 +88,15 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   topics: "トピック",
 
   // Custom layers
+  addDemoSphere: "デモ球体を追加",
   addGrid: "グリッドを追加する",
   addURDF: "URDF を追加する",
   customLayers: "カスタムレイヤー",
   delete: "削除",
+  demoSphere: "デモ球体",
   divisions: "分割数",
   grid: "グリッド",
+  radius: "半径",
   size: "サイズ",
 
   // Image annotations

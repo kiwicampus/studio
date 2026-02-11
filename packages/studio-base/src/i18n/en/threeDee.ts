@@ -16,6 +16,14 @@ export const threeDee = {
   type: "Type",
   topic: "Topic",
 
+  // GridMap
+  heightLayer: "Height layer",
+  colorLayer: "Color layer",
+  flatTerrain: "Flat terrain",
+  gridMapAutoMinMax: "Auto min/max",
+  gridMapMinValue: "Min value",
+  gridMapMaxValue: "Max value",
+  gridMapShowGridLines: "Show grid lines",
   // Frame
   age: "Age",
   axisScale: "Axis scale",
@@ -78,12 +86,15 @@ export const threeDee = {
   topics: "Topics",
 
   // Custom layers
+  addDemoSphere: "Add Demo Sphere",
   addGrid: "Add Grid",
   addURDF: "Add URDF",
   customLayers: "Custom layers",
   delete: "Delete",
+  demoSphere: "Demo Sphere",
   divisions: "Divisions",
   grid: "Grid",
+  radius: "Radius",
   size: "Size",
 
   // Image annotations

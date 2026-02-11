@@ -8,6 +8,13 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   // Common
   color: "颜色",
   colorMode: "颜色模式",
+  colorLayer: "颜色层",
+  flatTerrain: "平坦地形",
+  gridMapAutoMinMax: "自动最小/最大值",
+  gridMapMaxValue: "最大值",
+  gridMapMinValue: "最小值",
+  gridMapShowGridLines: "显示网格线",
+  heightLayer: "高度层",
   frame: "参考系",
   lineWidth: "线宽",
   position: "位置",
@@ -77,12 +84,15 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   topics: "话题",
 
   // Custom layers
+  addDemoSphere: "添加演示球体",
   addGrid: "添加网格",
   addURDF: "添加 URDF",
   customLayers: "自定义图层",
   delete: "删除",
+  demoSphere: "演示球体",
   divisions: "划分",
   grid: "网格",
+  radius: "半径",
   size: "大小",
 
   // Image annotations

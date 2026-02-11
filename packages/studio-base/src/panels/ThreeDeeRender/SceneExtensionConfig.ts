@@ -5,6 +5,8 @@
 import { Cameras } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/Cameras";
 import { FoxgloveGrid } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/FoxgloveGrid";
 import { FrameAxes } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/FrameAxes";
+import { DemoSphere } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/DemoSphere";
+import { GridMaps } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/GridMaps";
 import { Grids } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/Grids";
 import { ImageMode } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/ImageMode/ImageMode";
 import { Images } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/Images";
@@ -77,6 +79,12 @@ export const DEFAULT_SCENE_EXTENSION_CONFIG: SceneExtensionConfig = {
       init: (renderer: IRenderer) =>
         // only show frame axes and labels by default when in 3d mode
         new FrameAxes(renderer, { visible: renderer.interfaceMode === "3d" }),
+    },
+    [DemoSphere.extensionId]: {
+      init: (renderer: IRenderer) => new DemoSphere(renderer),
+    },
+    [GridMaps.extensionId]: {
+      init: (renderer: IRenderer) => new GridMaps(renderer),
     },
     [Grids.extensionId]: {
       init: (renderer: IRenderer) => new Grids(renderer),
