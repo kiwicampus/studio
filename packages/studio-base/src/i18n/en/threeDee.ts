@@ -21,6 +21,8 @@ export const threeDee = {
   colorLayer: "Color layer",
   flatTerrain: "Flat terrain",
   gridMapAutoMinMax: "Auto min/max",
+  gridMapColorModeGradient: "Gradient",
+  gridMapColorModeRainbow: "Rainbow",
   gridMapMinValue: "Min value",
   gridMapMaxValue: "Max value",
   gridMapShowGridLines: "Show grid lines",

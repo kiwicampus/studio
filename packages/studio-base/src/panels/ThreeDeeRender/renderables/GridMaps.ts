@@ -27,6 +27,7 @@ import { topicIsConvertibleToSchema } from "../topicIsConvertibleToSchema";
 export type LayerSettingsGridMap = BaseSettings & {
   heightLayer: string;
   colorLayer: string;
+  colorMode: "gradient" | "rainbow";
   minColor: string;
   maxColor: string;
   minValue: number;
@@ -56,6 +57,7 @@ const DEFAULT_SETTINGS: LayerSettingsGridMap = {
   visible: true,
   heightLayer: "elevation",
   colorLayer: "elevation",
+  colorMode: "gradient",
   minColor: DEFAULT_MIN_COLOR_STR,
   maxColor: DEFAULT_MAX_COLOR_STR,
   minValue: 0,
@@ -107,6 +109,43 @@ function getMultiArrayDimensions(array: Float32MultiArray): { rows: number; cols
     return { rows: dim0?.size ?? 0, cols: dim1?.size ?? 0 };
   }
   return { rows: dim1?.size ?? 0, cols: dim0?.size ?? 0 };
+}
+
+/** Converts HSV to RGB (h in [0,360), s and v in [0,1]) */
+function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0,
+    g = 0,
+    b = 0;
+  if (h < 60) {
+    r = c;
+    g = x;
+    b = 0;
+  } else if (h < 120) {
+    r = x;
+    g = c;
+    b = 0;
+  } else if (h < 180) {
+    r = 0;
+    g = c;
+    b = x;
+  } else if (h < 240) {
+    r = 0;
+    g = x;
+    b = c;
+  } else if (h < 300) {
+    r = x;
+    g = 0;
+    b = c;
+  } else {
+    r = c;
+    g = 0;
+    b = x;
+  }
+  return { r: r + m, g: g + m, b: b + m };
 }
 
 /** Extracts Float32 data from a layer, handling row/column major layout */
@@ -168,6 +207,15 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
           input: "select",
           value: configWithDefaults.colorLayer,
           options: colorLayerOptions,
+        },
+        colorMode: {
+          label: t("threeDee:colorMode"),
+          input: "select",
+          value: configWithDefaults.colorMode,
+          options: [
+            { label: t("threeDee:gridMapColorModeGradient"), value: "gradient" },
+            { label: t("threeDee:gridMapColorModeRainbow"), value: "rainbow" },
+          ],
         },
         flatTerrain: {
           label: t("threeDee:flatTerrain"),
@@ -410,7 +458,6 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
       ? basicLayers
       : [settings.heightLayer, ...basicLayers];
     const isValidCell = (i: number, j: number): boolean => {
-      if (settings.flatTerrain) return true;
       for (const layerName of validityLayers) {
         const layerIdx = layers.indexOf(layerName);
         if (layerIdx >= 0 && gridMapData[layerIdx]) {
@@ -457,6 +504,10 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
       }
       const t = (value - minVal) / (maxVal - minVal);
       const clamped = Math.max(0, Math.min(1, t));
+      if (settings.colorMode === "rainbow") {
+        const { r, g, b } = hsvToRgb(clamped * 300, 1, 1);
+        return { r, g, b, a: settings.alpha };
+      }
       return {
         r: tempMin.r + (tempMax.r - tempMin.r) * clamped,
         g: tempMin.g + (tempMax.g - tempMin.g) * clamped,

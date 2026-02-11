@@ -11,6 +11,8 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   colorLayer: "颜色层",
   flatTerrain: "平坦地形",
   gridMapAutoMinMax: "自动最小/最大值",
+  gridMapColorModeGradient: "渐变",
+  gridMapColorModeRainbow: "彩虹",
   gridMapMaxValue: "最大值",
   gridMapMinValue: "最小值",
   gridMapShowGridLines: "显示网格线",

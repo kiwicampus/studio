@@ -11,6 +11,8 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   colorLayer: "カラーレイヤー",
   flatTerrain: "フラット地形",
   gridMapAutoMinMax: "自動最小/最大",
+  gridMapColorModeGradient: "グラデーション",
+  gridMapColorModeRainbow: "レインボー",
   gridMapMaxValue: "最大値",
   gridMapMinValue: "最小値",
   gridMapShowGridLines: "グリッド線を表示",
