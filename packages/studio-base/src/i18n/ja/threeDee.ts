@@ -88,12 +88,10 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   topics: "トピック",
 
   // Custom layers
-  addDemoSphere: "デモ球体を追加",
   addGrid: "グリッドを追加する",
   addURDF: "URDF を追加する",
   customLayers: "カスタムレイヤー",
   delete: "削除",
-  demoSphere: "デモ球体",
   divisions: "分割数",
   grid: "グリッド",
   radius: "半径",

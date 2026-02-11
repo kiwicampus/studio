@@ -86,12 +86,10 @@ export const threeDee = {
   topics: "Topics",
 
   // Custom layers
-  addDemoSphere: "Add Demo Sphere",
   addGrid: "Add Grid",
   addURDF: "Add URDF",
   customLayers: "Custom layers",
   delete: "Delete",
-  demoSphere: "Demo Sphere",
   divisions: "Divisions",
   grid: "Grid",
   radius: "Radius",

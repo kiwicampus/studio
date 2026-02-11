@@ -84,12 +84,10 @@ export const threeDee: Partial<TypeOptions["resources"]["threeDee"]> = {
   topics: "话题",
 
   // Custom layers
-  addDemoSphere: "添加演示球体",
   addGrid: "添加网格",
   addURDF: "添加 URDF",
   customLayers: "自定义图层",
   delete: "删除",
-  demoSphere: "演示球体",
   divisions: "划分",
   grid: "网格",
   radius: "半径",
