@@ -8,6 +8,7 @@
 import { Cameras } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/Cameras";
 import { FoxgloveGrid } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/FoxgloveGrid";
 import { FrameAxes } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/FrameAxes";
+import { GridMaps } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/GridMaps";
 import { Grids } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/Grids";
 import { ImageMode } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/ImageMode/ImageMode";
 import { Images } from "@lichtblick/suite-base/panels/ThreeDeeRender/renderables/Images";
@@ -80,6 +81,9 @@ export const DEFAULT_SCENE_EXTENSION_CONFIG: SceneExtensionConfig = {
       init: (renderer: IRenderer) =>
         // only show frame axes and labels by default when in 3d mode
         new FrameAxes(renderer, { visible: renderer.interfaceMode === "3d" }),
+    },
+    [GridMaps.extensionId]: {
+      init: (renderer: IRenderer) => new GridMaps(renderer),
     },
     [Grids.extensionId]: {
       init: (renderer: IRenderer) => new Grids(renderer),
