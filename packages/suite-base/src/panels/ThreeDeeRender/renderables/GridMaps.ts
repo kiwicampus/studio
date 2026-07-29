@@ -94,24 +94,55 @@ export class GridMapRenderable extends Renderable<GridMapUserData> {
   }
 }
 
-/** Parses Float32MultiArray layout to get rows and cols.
- * Grid map uses "row_index" and "column_index" labels.
- * Row-major: dim[0].label === "row_index" => rows=dim[0].size, cols=dim[1].size
- * Column-major: dim[0].label === "column_index" => cols=dim[0].size, rows=dim[1].size
+/**
+ * Accessor over a single GridMap layer's Float32MultiArray, indexed by logical
+ * (rowIdx, colIdx) in [0,rows)x[0,cols).
+ *
+ * grid_map_msgs does not always store layer data row-major: whichever of
+ * dim[0]/dim[1] is labeled "row_index" vs "column_index" tells us which axis
+ * is which, but per the std_msgs/MultiArrayLayout spec the flat offset is
+ * always `data_offset + d0 * dim[1].size + d1`, where d0/d1 index dim[0]/dim[1]
+ * in message order (not necessarily row/col order). grid_map_ros commonly
+ * publishes dim[0]="column_index" (outer/slow) and dim[1]="row_index"
+ * (inner/fast) because it maps the layer's column-major Eigen matrix directly
+ * onto the message buffer, so treating the data as row-major (as if dim[0]
+ * were always rows) silently transposes and aliases the grid.
+ *
+ * Each layer is also a circular buffer. Despite the field names, GridMap.msg
+ * defines outer_start_index as the row start and inner_start_index as the
+ * column start (Index(row, col) in grid_map_core) — not the MultiArray
+ * dim[0]/dim[1] starts. Wrap into buffer indices first, then map to d0/d1.
  */
-/** Grid map uses "row_index" and "column_index" labels. Row-major: dim[0]=row, dim[1]=col */
-function getMultiArrayDimensions(array: Float32MultiArray): { rows: number; cols: number } {
+function createLayerAccessor(
+  array: Float32MultiArray,
+  outerStartIndex: number,
+  innerStartIndex: number,
+): { rows: number; cols: number; get: (rowIdx: number, colIdx: number) => number } {
   const layout = array.layout;
-  if (!layout?.dim || layout.dim.length < 2) {
-    return { rows: 0, cols: 0 };
+  const dim0 = layout?.dim?.[0];
+  const dim1 = layout?.dim?.[1];
+  if (!dim0 || !dim1) {
+    return { rows: 0, cols: 0, get: () => NaN };
   }
-  const dim0 = layout.dim[0];
-  const dim1 = layout.dim[1];
-  const isRowMajor = dim0?.label === "row_index";
-  if (isRowMajor) {
-    return { rows: dim0?.size ?? 0, cols: dim1?.size ?? 0 };
-  }
-  return { rows: dim1?.size ?? 0, cols: dim0?.size ?? 0 };
+
+  const dim0IsRow = dim0.label === "row_index";
+  const rows = dim0IsRow ? dim0.size : dim1.size;
+  const cols = dim0IsRow ? dim1.size : dim0.size;
+  const dataOffset = layout.data_offset ?? 0;
+  const data = array.data instanceof Float32Array ? array.data : new Float32Array(array.data);
+
+  return {
+    rows,
+    cols,
+    get(rowIdx: number, colIdx: number): number {
+      // outer_start_index = row start, inner_start_index = column start
+      const rowBuf = (rowIdx + outerStartIndex) % rows;
+      const colBuf = (colIdx + innerStartIndex) % cols;
+      const d0 = dim0IsRow ? rowBuf : colBuf;
+      const d1 = dim0IsRow ? colBuf : rowBuf;
+      return data[dataOffset + d0 * dim1.size + d1] ?? NaN;
+    },
+  };
 }
 
 /** Converts HSV to RGB (h in [0,360), s and v in [0,1]) */
@@ -149,21 +180,6 @@ function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: n
     b = x;
   }
   return { r: r + m, g: g + m, b: b + m };
-}
-
-/** Extracts Float32 data from a layer, handling row/column major layout */
-function getLayerData(
-  array: Float32MultiArray,
-  rows: number,
-  cols: number,
-): Float32Array {
-  const data = array.data instanceof Float32Array ? array.data : new Float32Array(array.data);
-  const offset = array.layout?.data_offset ?? 0;
-  const size = rows * cols;
-  if (data.length < offset + size) {
-    return new Float32Array(0);
-  }
-  return data.subarray(offset, offset + size);
 }
 
 export class GridMaps extends SceneExtension<GridMapRenderable> {
@@ -419,7 +435,11 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
     const heightData = heightLayerIdx >= 0 ? data[heightLayerIdx]! : data[0]!;
     const colorData = colorLayerIdx >= 0 ? data[colorLayerIdx]! : heightData;
 
-    const { rows, cols } = getMultiArrayDimensions(heightData);
+    const outerStartIndex = gridMap.outer_start_index;
+    const innerStartIndex = gridMap.inner_start_index;
+    const heightAccessor = createLayerAccessor(heightData, outerStartIndex, innerStartIndex);
+    const colorAccessor = createLayerAccessor(colorData, outerStartIndex, innerStartIndex);
+    const { rows, cols } = heightAccessor;
     if (rows < 2 || cols < 2) {
       this.renderer.settings.errors.addToTopic(
         renderable.userData.topic,
@@ -430,8 +450,9 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
     }
 
     const resolution = info.resolution ?? 0.1;
-    const lengthX = info.length_x ?? resolution * cols;
-    const lengthY = info.length_y ?? resolution * rows;
+    // grid_map convention: rows run along x (forward), cols run along y (left).
+    const lengthX = info.length_x ?? resolution * rows;
+    const lengthY = info.length_y ?? resolution * cols;
     const pose = info.pose;
     const centerX = pose.position.x ?? 0;
     const centerY = pose.position.y ?? 0;
@@ -456,22 +477,25 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
       });
     }
 
-    const heightValues = getLayerData(heightData, rows, cols);
-    const colorValues = getLayerData(colorData, rows, cols);
-
     // Compute isValid mask from basic_layers (RViz: skip invalid cells to create holes)
     const gridMapData = gridMap.data;
     const basicLayers = gridMap.basic_layers ?? [];
     const validityLayers = basicLayers.includes(settings.heightLayer)
       ? basicLayers
       : [settings.heightLayer, ...basicLayers];
-    const isValidCell = (i: number, j: number): boolean => {
-      for (const layerName of validityLayers) {
+    const validityAccessors = validityLayers
+      .map((layerName) => {
         const layerIdx = layers.indexOf(layerName);
-        if (layerIdx >= 0 && gridMapData[layerIdx]) {
-          const layerValues = getLayerData(gridMapData[layerIdx]!, rows, cols);
-          const v = layerValues[i * cols + j];
-          if (!Number.isFinite(v)) return false;
+        if (layerIdx < 0 || !gridMapData[layerIdx]) {
+          return undefined;
+        }
+        return createLayerAccessor(gridMapData[layerIdx]!, outerStartIndex, innerStartIndex);
+      })
+      .filter((accessor): accessor is ReturnType<typeof createLayerAccessor> => accessor != undefined);
+    const isValidCell = (i: number, j: number): boolean => {
+      for (const accessor of validityAccessors) {
+        if (!Number.isFinite(accessor.get(i, j))) {
+          return false;
         }
       }
       return true;
@@ -492,11 +516,13 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
     if (settings.useAutoMinMax && settings.colorLayer !== "__flat__") {
       minVal = Number.POSITIVE_INFINITY;
       maxVal = Number.NEGATIVE_INFINITY;
-      for (let i = 0; i < colorValues.length; i++) {
-        const v = colorValues[i]!;
-        if (Number.isFinite(v)) {
-          minVal = Math.min(minVal, v);
-          maxVal = Math.max(maxVal, v);
+      for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+          const v = colorAccessor.get(i, j);
+          if (Number.isFinite(v)) {
+            minVal = Math.min(minVal, v);
+            maxVal = Math.max(maxVal, v);
+          }
         }
       }
       if (minVal === maxVal) maxVal = minVal + 1;
@@ -526,18 +552,17 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
 
     for (let i = 0; i < rows; i++) {
       for (let j = 0; j < cols; j++) {
-        const idx = i * cols + j;
-        const rawH = heightValues[idx] ?? NaN;
+        const rawH = heightAccessor.get(i, j);
         const valid = isValidCell(i, j);
         // Invalid cells: skip triangle to create hole; use 0 for vertex position
         const h: number = settings.flatTerrain ? 0 : (Number.isFinite(rawH) ? rawH : 0);
 
-        const x = topLeftX - j * resolution;
-        const y = topLeftY - i * resolution;
+        const x = topLeftX - i * resolution;
+        const y = topLeftY - j * resolution;
 
         positions.push(x, y, h);
 
-        const colorVal = colorValues[idx];
+        const colorVal = colorAccessor.get(i, j);
         const color = getColor(typeof colorVal === "number" ? colorVal : 0);
         colors.push(color.r, color.g, color.b, valid ? color.a : 0);
 
@@ -575,24 +600,24 @@ export class GridMaps extends SceneExtension<GridMapRenderable> {
     if (settings.showGridLines) {
       const getHeight = (i: number, j: number): number => {
         if (i < 0 || i >= rows || j < 0 || j >= cols) return 0;
-        const v = heightValues[i * cols + j] ?? NaN;
+        const v = heightAccessor.get(i, j);
         return Number.isFinite(v) ? v : 0;
       };
       const linePositions: number[] = [];
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
-          const x = topLeftX - j * resolution;
-          const y = topLeftY - i * resolution;
+          const x = topLeftX - i * resolution;
+          const y = topLeftY - j * resolution;
           const h = getHeight(i, j);
           if (j < cols - 1 && isValidCell(i, j) && isValidCell(i, j + 1)) {
-            const x2 = topLeftX - (j + 1) * resolution;
+            const y2 = topLeftY - (j + 1) * resolution;
             const h2 = getHeight(i, j + 1);
-            linePositions.push(x, y, h, x2, y, h2);
+            linePositions.push(x, y, h, x, y2, h2);
           }
           if (i < rows - 1 && isValidCell(i, j) && isValidCell(i + 1, j)) {
-            const y2 = topLeftY - (i + 1) * resolution;
+            const x2 = topLeftX - (i + 1) * resolution;
             const h2 = getHeight(i + 1, j);
-            linePositions.push(x, y, h, x, y2, h2);
+            linePositions.push(x, y, h, x2, y, h2);
           }
         }
       }
