@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2026 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import Log from "@lichtblick/log";
 import {
   AppBarProps,
   AppSetting,
@@ -28,6 +29,12 @@ import {
 import { APP_CONFIG } from "@lichtblick/suite-base/constants/config";
 
 import LocalStorageAppConfiguration from "./services/LocalStorageAppConfiguration";
+import {
+  areBundledExtensionsSeeded,
+  ensureBundledExtensionsInstalled,
+} from "./services/ensureBundledExtensions";
+
+const log = Log.getLogger(__filename);
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -36,7 +43,7 @@ export function WebRoot(props: {
   dataSources: IDataSourceFactory[] | undefined;
   AppBarComponent?: (props: AppBarProps) => React.JSX.Element;
   children: React.JSX.Element;
-}): React.JSX.Element {
+}): React.JSX.Element | ReactNull {
   const appConfiguration = useMemo(
     () =>
       new LocalStorageAppConfiguration({
@@ -59,6 +66,26 @@ export function WebRoot(props: {
   }
   const [extensionLoaders] = useState(() => defaultExtensionLoaders);
 
+  // Seed bundled extensions (e.g. the Cloudini compressed point cloud converter) into the local
+  // extension store before the app mounts, since installing from the Marketplace is desktop-only.
+  // Skipped on the (overwhelmingly common) already-seeded path so repeat loads render immediately.
+  const [bundledExtensionsReady, setBundledExtensionsReady] = useState(areBundledExtensionsSeeded);
+  useEffect(() => {
+    if (bundledExtensionsReady) {
+      return;
+    }
+
+    // "local" is always present in defaultExtensionLoaders above.
+    const localLoader = extensionLoaders.find((loader) => loader.namespace === "local")!;
+    ensureBundledExtensionsInstalled(localLoader)
+      .catch((error: unknown) => {
+        log.error("Failed to install bundled extensions", error);
+      })
+      .finally(() => {
+        setBundledExtensionsReady(true);
+      });
+  }, [bundledExtensionsReady, extensionLoaders]);
+
   const dataSources = useMemo(() => {
     const sources = [
       new Ros1LocalBagDataSourceFactory(),
@@ -74,6 +101,10 @@ export function WebRoot(props: {
 
     return props.dataSources ?? sources;
   }, [props.dataSources]);
+
+  if (!bundledExtensionsReady) {
+    return ReactNull;
+  }
 
   return (
     <SharedRoot
