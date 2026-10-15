@@ -277,7 +277,7 @@ export class ImageMode
         subscription: {
           handler: this.messageHandler.handleCompressedVideo,
           shouldSubscribe: this.imageShouldSubscribe,
-          filterQueue: this.#filterMessageQueue.bind(this),
+          // no filterQueue: dropping any video frame corrupts the decode of the ones after it
         },
       },
     ];

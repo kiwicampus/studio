@@ -84,7 +84,8 @@ export async function decodeCompressedVideoToBitmap(
     videoFrame.close();
     return imageBitmap;
   }
-  return await emptyVideoFrame(videoPlayer, resizeWidth);
+  // decoder timed out: hold the last frame instead of flashing a blank one
+  return videoPlayer.lastImageBitmap ?? (await emptyVideoFrame(videoPlayer, resizeWidth));
 }
 
 export const IMAGE_DEFAULT_COLOR_MODE_SETTINGS: Required<

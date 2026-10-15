@@ -69,16 +69,16 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
       // See <https://github.com/w3c/webcodecs/issues/206>
       decoderConfig.optimizeForLatency = true;
 
-      // Try with 'prefer-hardware' first
+      // Try with 'prefer-software' first: hw decoders hold frames past MAX_DECODE_WAIT_MS (laggy)
       let modifiedConfig = { ...decoderConfig };
-      modifiedConfig.hardwareAcceleration = "prefer-hardware";
+      modifiedConfig.hardwareAcceleration = "prefer-software";
 
       let support = await VideoDecoder.isConfigSupported(modifiedConfig);
       if (support.supported !== true) {
         log.warn(
-          `VideoDecoder does not support configuration ${JSON.stringify(modifiedConfig)}. Trying without 'prefer-hardware'`,
+          `VideoDecoder does not support configuration ${JSON.stringify(modifiedConfig)}. Trying without 'prefer-software'`,
         );
-        // If 'prefer-hardware' is not supported, try without it
+        // If 'prefer-software' is not supported, try without it
         modifiedConfig = { ...decoderConfig };
         support = await VideoDecoder.isConfigSupported(modifiedConfig);
       }
@@ -97,7 +97,7 @@ export class VideoPlayer extends EventEmitter<VideoPlayerEventTypes> {
       }
 
       this.emit("debug", `Configuring VideoDecoder with ${JSON.stringify(decoderConfig)}`);
-      this.#decoder.configure(decoderConfig);
+      this.#decoder.configure(modifiedConfig);
       this.#decoderConfig = decoderConfig;
       this.#codedSize = undefined;
       if (decoderConfig.codedWidth != undefined && decoderConfig.codedHeight != undefined) {
