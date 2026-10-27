@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2026 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -70,6 +70,8 @@ function MapPanel(props: MapPanelProps): React.JSX.Element {
       topicColors: initialConfig.topicColors ?? {},
       zoomLevel: initialConfig.zoomLevel,
       maxNativeZoom: initialConfig.maxNativeZoom ?? 18,
+      overlayTileUrl: initialConfig.overlayTileUrl,
+      overlayOpacity: initialConfig.overlayOpacity,
     };
   });
 
@@ -232,6 +234,18 @@ function MapPanel(props: MapPanelProps): React.JSX.Element {
       });
     }
 
+    if (path[1] === "overlayTileUrl" && input === "string") {
+      setConfig((oldConfig) => {
+        return { ...oldConfig, overlayTileUrl: value };
+      });
+    }
+
+    if (path[1] === "overlayOpacity" && input === "number") {
+      setConfig((oldConfig) => {
+        return { ...oldConfig, overlayOpacity: value };
+      });
+    }
+
     if (path[1] === "followTopic" && input === "select") {
       setConfig((oldConfig) => {
         return { ...oldConfig, followTopic: String(value) };
@@ -272,6 +286,25 @@ function MapPanel(props: MapPanelProps): React.JSX.Element {
       customLayer.options.maxNativeZoom = config.maxNativeZoom;
     }
   }, [config.layer, config.maxNativeZoom, customLayer]);
+
+  useEffect(() => {
+    // Ignore urls with an error - the settings tree will inform the user that their url is invalid
+    if (!currentMap || !config.overlayTileUrl || validateCustomUrl(config.overlayTileUrl)) {
+      return;
+    }
+
+    const overlayLayer = new TileLayer(config.overlayTileUrl, {
+      maxNativeZoom: config.maxNativeZoom,
+      maxZoom: 24,
+      opacity: config.overlayOpacity ?? 1,
+      // Stay above the tile layer when it is switched after the overlay was added
+      zIndex: 2,
+    }).addTo(currentMap);
+
+    return () => {
+      overlayLayer.remove();
+    };
+  }, [config.maxNativeZoom, config.overlayOpacity, config.overlayTileUrl, currentMap]);
 
   // Subscribe to eligible and enabled topics
   useEffect(() => {
