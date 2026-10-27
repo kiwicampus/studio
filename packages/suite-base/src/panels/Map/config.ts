@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-FileCopyrightText: Copyright (C) 2023-2026 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
 // SPDX-License-Identifier: MPL-2.0
 
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -20,6 +20,9 @@ export type Config = {
   topicColors: Record<string, string>;
   zoomLevel?: number;
   maxNativeZoom?: number;
+  // Optional tiles drawn over the tile layer, e.g. a segmentation map over satellite imagery
+  overlayTileUrl?: string;
+  overlayOpacity?: number;
 };
 
 export function validateCustomUrl(url: string): Error | undefined {
@@ -116,7 +119,29 @@ export function buildSettingsTree(
       value: config.customTileUrl,
       error,
     };
+  }
 
+  generalSettings.overlayTileUrl = {
+    label: "Overlay tile URL",
+    input: "string",
+    value: config.overlayTileUrl,
+    error: validateCustomUrl(config.overlayTileUrl ?? "")?.message,
+    help: "Optional tiles drawn over the tile layer, e.g. a segmentation map with a transparent background.",
+  };
+
+  if (config.overlayTileUrl) {
+    generalSettings.overlayOpacity = {
+      label: "Overlay opacity",
+      input: "number",
+      value: config.overlayOpacity ?? 1,
+      min: 0,
+      max: 1,
+      step: 0.1,
+    };
+  }
+
+  // The custom layer and the overlay share the max tile level
+  if (config.layer === "custom" || config.overlayTileUrl) {
     generalSettings.maxNativeZoom = {
       label: "Max tile level",
       input: "select",
@@ -124,7 +149,7 @@ export function buildSettingsTree(
       options: [18, 19, 20, 21, 22, 23, 24].map((num) => {
         return { label: String(num), value: num };
       }),
-      help: "Highest zoom supported by the custom map source. See https://leafletjs.com/examples/zoom-levels/ for more information.",
+      help: "Highest zoom supported by the custom map and overlay sources. See https://leafletjs.com/examples/zoom-levels/ for more information.",
     };
   }
 
